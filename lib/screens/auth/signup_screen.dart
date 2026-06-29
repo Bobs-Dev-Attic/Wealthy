@@ -42,6 +42,27 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     }
   }
 
+  /// Signs in with the just-created credentials, then navigates. Sign-in is
+  /// deferred to here so the QR screen stays put until the user is ready.
+  Future<void> _continue(String target) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await ref.read(authServiceProvider).login(
+            userId: _creds!.userId,
+            accessCode: _creds!.accessCode,
+          );
+      if (mounted) context.go(target);
+    } catch (e) {
+      setState(() {
+        _error = 'Could not sign in. Please try again.';
+        _loading = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -149,13 +170,22 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             style: TextStyle(fontSize: 13),
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(_error!,
+                textAlign: TextAlign.center, style: const TextStyle(color: Colors.redAccent)),
+          ),
         FilledButton(
-          onPressed: () => context.go('/'),
-          child: const Text('Continue to my dashboard'),
+          onPressed: _loading ? null : () => _continue('/'),
+          child: _loading
+              ? const SizedBox(
+                  height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('I saved it — continue'),
         ),
         TextButton(
-          onPressed: () => context.go('/security'),
+          onPressed: _loading ? null : () => _continue('/security'),
           child: const Text('Add a password for extra security'),
         ),
       ],

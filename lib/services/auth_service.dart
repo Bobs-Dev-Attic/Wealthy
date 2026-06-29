@@ -51,10 +51,9 @@ class AuthService {
       userId: data['userId'] as String,
       accessCode: data['accessCode'] as String,
     );
-    await _client.auth.signInWithPassword(
-      email: _emailFor(creds.userId),
-      password: creds.accessCode,
-    );
+    // Intentionally do NOT sign in here. Signing in fires an auth-state change
+    // that would redirect away from the signup screen before the user can save
+    // their QR code. The screen signs in explicitly when the user continues.
     await _cache(creds);
     return creds;
   }
