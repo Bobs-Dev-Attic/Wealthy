@@ -87,11 +87,6 @@ class YouTab extends ConsumerWidget {
         _gap,
         const _Hint('Start with your age. Everything below is optional — add more for a sharper plan.'),
         _gap,
-        Align(
-          alignment: Alignment.centerLeft,
-          child: GuidedButton(onPressed: () => launchInterview(context, youInterview())),
-        ),
-        _gap,
         Row(children: [
           Expanded(
             child: IntField(
@@ -412,11 +407,6 @@ class TaxesTab extends ConsumerWidget {
         ),
         _gap,
         const _Hint('Used to estimate federal income tax, capital-gains and Social Security taxation.'),
-        _gap,
-        Align(
-          alignment: Alignment.centerLeft,
-          child: GuidedButton(onPressed: () => launchInterview(context, taxesInterview())),
-        ),
         _gap,
         DropdownButtonFormField<FilingStatus>(
           value: s.profile.filingStatus,
