@@ -10,6 +10,9 @@ export PATH="$PWD/flutter/bin:$PATH"
 
 flutter config --enable-web
 flutter pub get
-flutter build web --release \
+# --no-web-resources-cdn bundles CanvasKit locally instead of fetching it from
+# gstatic.com at runtime, which avoids an indefinite "Loading…" on networks that
+# block or throttle the CDN.
+flutter build web --release --no-web-resources-cdn \
   --dart-define=SUPABASE_URL="${SUPABASE_URL:-}" \
   --dart-define=SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY:-}"

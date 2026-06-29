@@ -19,16 +19,58 @@ import 'screens/projections/projections_screen.dart';
 import 'state/providers.dart';
 
 class WealthyApp extends ConsumerWidget {
-  const WealthyApp({super.key});
+  const WealthyApp({super.key, this.initError});
+
+  final Object? initError;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (initError != null) return StartupErrorApp(error: initError!);
     final router = ref.watch(_routerProvider);
     return MaterialApp.router(
       title: 'Wealthy',
       debugShowCheckedModeBanner: false,
       theme: WealthyTheme.dark,
       routerConfig: router,
+    );
+  }
+}
+
+/// Shown when Supabase fails to initialize, so the app still paints a frame
+/// instead of hanging on the HTML loading screen.
+class StartupErrorApp extends StatelessWidget {
+  const StartupErrorApp({super.key, required this.error});
+  final Object error;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: WealthyTheme.dark,
+      home: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.cloud_off, size: 48),
+                const SizedBox(height: 12),
+                const Text('Could not reach the Wealthy backend.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                const Text('Please check your connection and refresh the page.',
+                    textAlign: TextAlign.center),
+                const SizedBox(height: 16),
+                Text('$error',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 12, color: Colors.white54)),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
