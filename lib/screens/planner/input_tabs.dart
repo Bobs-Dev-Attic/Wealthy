@@ -1,11 +1,52 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/formatters.dart';
 import '../../models/enums.dart';
 import '../../models/liability.dart';
 import '../../state/plan_controller.dart';
 import '../../widgets/editor_fields.dart';
 import 'interview.dart';
+
+/// A tab header row: action buttons on the left, a running total on the right.
+class TabHeader extends StatelessWidget {
+  const TabHeader({super.key, required this.actions, this.totalLabel, this.totalValue});
+  final List<Widget> actions;
+  final String? totalLabel;
+  final double? totalValue;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Wrap(
+            spacing: 10,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: actions,
+          ),
+        ),
+        if (totalLabel != null)
+          Padding(
+            padding: const EdgeInsets.only(left: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(totalLabel!,
+                    style: TextStyle(
+                        fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                Text(money(totalValue ?? 0),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
 
 /// A button that launches a guided interview for a tab.
 class GuidedButton extends StatelessWidget {
@@ -38,12 +79,13 @@ class YouTab extends ConsumerWidget {
     return ListView(
       padding: _pad,
       children: [
-        const _Hint('Start with your age. Everything below is optional — add more for a sharper plan.'),
-        _gap,
-        Align(
-          alignment: Alignment.centerLeft,
-          child: GuidedButton(onPressed: () => launchInterview(context, youInterview())),
+        TabHeader(
+          totalLabel: 'Net worth',
+          totalValue: s.netWorth,
+          actions: [GuidedButton(onPressed: () => launchInterview(context, youInterview()))],
         ),
+        _gap,
+        const _Hint('Start with your age. Everything below is optional — add more for a sharper plan.'),
         _gap,
         Row(children: [
           Expanded(
@@ -99,6 +141,8 @@ class InvestmentsTab extends ConsumerWidget {
       addLabel: 'Add account',
       onAdd: c.addAccount,
       onInterview: () => launchInterview(context, investmentsInterview()),
+      totalLabel: 'Total assets',
+      totalValue: s.totalAssets,
       emptyHint: 'Add your brokerage, 401(k)/IRA, Roth, HSA and cash accounts.',
       itemCount: s.accounts.length,
       itemBuilder: (i) {
@@ -167,6 +211,8 @@ class IncomeTab extends ConsumerWidget {
       addLabel: 'Add income',
       onAdd: c.addIncome,
       onInterview: () => launchInterview(context, incomeInterview()),
+      totalLabel: 'Income / yr',
+      totalValue: s.annualIncome,
       emptyHint: 'Add Social Security, pensions and annuities with the age they start.',
       itemCount: s.incomes.length,
       itemBuilder: (i) {
@@ -234,6 +280,8 @@ class ExpensesTab extends ConsumerWidget {
       addLabel: 'Add expense',
       onAdd: c.addExpense,
       onInterview: () => launchInterview(context, expensesInterview()),
+      totalLabel: 'Expenses / yr',
+      totalValue: s.annualExpenses,
       emptyHint: 'Add yearly living costs, housing, healthcare and travel.',
       itemCount: s.expenses.length,
       itemBuilder: (i) {
@@ -284,6 +332,8 @@ class LiabilitiesTab extends ConsumerWidget {
       addLabel: 'Add debt',
       onAdd: c.addLiability,
       onInterview: () => launchInterview(context, liabilitiesInterview()),
+      totalLabel: 'Total debt',
+      totalValue: s.totalLiabilities,
       emptyHint: 'Add mortgage, auto, student or other loans and credit cards.',
       itemCount: s.liabilities.length,
       itemBuilder: (i) {
@@ -350,12 +400,13 @@ class TaxesTab extends ConsumerWidget {
     return ListView(
       padding: _pad,
       children: [
-        const _Hint('Used to estimate federal income tax, capital-gains and Social Security taxation.'),
-        _gap,
-        Align(
-          alignment: Alignment.centerLeft,
-          child: GuidedButton(onPressed: () => launchInterview(context, taxesInterview())),
+        TabHeader(
+          totalLabel: 'Net worth',
+          totalValue: s.netWorth,
+          actions: [GuidedButton(onPressed: () => launchInterview(context, taxesInterview()))],
         ),
+        _gap,
+        const _Hint('Used to estimate federal income tax, capital-gains and Social Security taxation.'),
         _gap,
         DropdownButtonFormField<FilingStatus>(
           value: s.profile.filingStatus,
@@ -389,6 +440,8 @@ class AssumptionsTab extends ConsumerWidget {
     return ListView(
       padding: _pad,
       children: [
+        TabHeader(actions: const [], totalLabel: 'Net worth', totalValue: s.netWorth),
+        _gap,
         Row(children: [
           Expanded(child: PercentField(label: 'Expected return', value: a.marketReturnMean, onChanged: (v) => c.setAssumptions(a.copyWith(marketReturnMean: v)))),
           _hgap,
@@ -431,6 +484,8 @@ class _ListTabScaffold extends StatelessWidget {
     required this.itemCount,
     required this.itemBuilder,
     this.onInterview,
+    this.totalLabel,
+    this.totalValue,
   });
   final String addLabel;
   final VoidCallback onAdd;
@@ -438,17 +493,18 @@ class _ListTabScaffold extends StatelessWidget {
   final int itemCount;
   final Widget Function(int) itemBuilder;
   final VoidCallback? onInterview;
+  final String? totalLabel;
+  final double? totalValue;
 
   @override
   Widget build(BuildContext context) {
     return ListView(
       padding: _pad,
       children: [
-        Wrap(
-          spacing: 10,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
+        TabHeader(
+          totalLabel: totalLabel,
+          totalValue: totalValue,
+          actions: [
             FilledButton.tonalIcon(
               onPressed: onAdd,
               icon: const Icon(Icons.add, size: 18),
