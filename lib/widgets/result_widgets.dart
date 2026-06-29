@@ -204,9 +204,9 @@ FlTitlesData _titles(double maxY) => FlTitlesData(
       leftTitles: AxisTitles(
         sideTitles: SideTitles(
           showTitles: true,
-          reservedSize: 64,
+          reservedSize: 46,
           getTitlesWidget: (v, _) =>
-              Text(money(v), style: const TextStyle(fontSize: 9)),
+              Text(moneyCompact(v), style: const TextStyle(fontSize: 9)),
         ),
       ),
       bottomTitles: AxisTitles(
