@@ -138,6 +138,17 @@ class PlanController extends StateNotifier<PlanState> {
     }
   }
 
+  /// Adds a fully-formed account immediately (optimistic), then patches its id
+  /// once persisted. Used by the guided interview.
+  Future<void> createAccount(Account a) async {
+    state = state.copyWith(accounts: [...state.accounts, a]);
+    try {
+      final id = await _ds.insertAccount(a);
+      state = state.copyWith(
+          accounts: [for (final x in state.accounts) identical(x, a) ? x.copyWith(id: id) : x]);
+    } catch (_) {}
+  }
+
   void updateAccount(Account a) {
     state = state.copyWith(accounts: [for (final x in state.accounts) x.id == a.id ? a : x]);
     if (a.id != null) _debounce('acc:${a.id}', () => _ds.updateAccount(a));
@@ -161,6 +172,15 @@ class PlanController extends StateNotifier<PlanState> {
     } catch (_) {
       state = state.copyWith(incomes: [...state.incomes, i]);
     }
+  }
+
+  Future<void> createIncome(IncomeSource i) async {
+    state = state.copyWith(incomes: [...state.incomes, i]);
+    try {
+      final id = await _ds.insertIncome(i);
+      state = state.copyWith(
+          incomes: [for (final x in state.incomes) identical(x, i) ? x.copyWith(id: id) : x]);
+    } catch (_) {}
   }
 
   void updateIncome(IncomeSource i) {
@@ -188,6 +208,15 @@ class PlanController extends StateNotifier<PlanState> {
     }
   }
 
+  Future<void> createExpense(Expense e) async {
+    state = state.copyWith(expenses: [...state.expenses, e]);
+    try {
+      final id = await _ds.insertExpense(e);
+      state = state.copyWith(
+          expenses: [for (final x in state.expenses) identical(x, e) ? x.copyWith(id: id) : x]);
+    } catch (_) {}
+  }
+
   void updateExpense(Expense e) {
     state = state.copyWith(expenses: [for (final x in state.expenses) x.id == e.id ? e : x]);
     if (e.id != null) _debounce('exp:${e.id}', () => _ds.updateExpense(e));
@@ -211,6 +240,15 @@ class PlanController extends StateNotifier<PlanState> {
     } catch (_) {
       state = state.copyWith(liabilities: [...state.liabilities, l]);
     }
+  }
+
+  Future<void> createLiability(Liability l) async {
+    state = state.copyWith(liabilities: [...state.liabilities, l]);
+    try {
+      final id = await _ds.insertLiability(l);
+      state = state.copyWith(
+          liabilities: [for (final x in state.liabilities) identical(x, l) ? x.copyWith(id: id) : x]);
+    } catch (_) {}
   }
 
   void updateLiability(Liability l) {

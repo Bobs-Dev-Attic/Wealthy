@@ -5,6 +5,21 @@ import '../../models/enums.dart';
 import '../../models/liability.dart';
 import '../../state/plan_controller.dart';
 import '../../widgets/editor_fields.dart';
+import 'interview.dart';
+
+/// A button that launches a guided interview for a tab.
+class GuidedButton extends StatelessWidget {
+  const GuidedButton({super.key, required this.onPressed});
+  final VoidCallback onPressed;
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: const Icon(Icons.auto_awesome, size: 18),
+      label: const Text('Guided setup'),
+    );
+  }
+}
 
 const _gap = SizedBox(height: 10);
 const _hgap = SizedBox(width: 10);
@@ -24,6 +39,11 @@ class YouTab extends ConsumerWidget {
       padding: _pad,
       children: [
         const _Hint('Start with your age. Everything below is optional — add more for a sharper plan.'),
+        _gap,
+        Align(
+          alignment: Alignment.centerLeft,
+          child: GuidedButton(onPressed: () => launchInterview(context, youInterview())),
+        ),
         _gap,
         Row(children: [
           Expanded(
@@ -78,6 +98,7 @@ class InvestmentsTab extends ConsumerWidget {
     return _ListTabScaffold(
       addLabel: 'Add account',
       onAdd: c.addAccount,
+      onInterview: () => launchInterview(context, investmentsInterview()),
       emptyHint: 'Add your brokerage, 401(k)/IRA, Roth, HSA and cash accounts.',
       itemCount: s.accounts.length,
       itemBuilder: (i) {
@@ -145,6 +166,7 @@ class IncomeTab extends ConsumerWidget {
     return _ListTabScaffold(
       addLabel: 'Add income',
       onAdd: c.addIncome,
+      onInterview: () => launchInterview(context, incomeInterview()),
       emptyHint: 'Add Social Security, pensions and annuities with the age they start.',
       itemCount: s.incomes.length,
       itemBuilder: (i) {
@@ -211,6 +233,7 @@ class ExpensesTab extends ConsumerWidget {
     return _ListTabScaffold(
       addLabel: 'Add expense',
       onAdd: c.addExpense,
+      onInterview: () => launchInterview(context, expensesInterview()),
       emptyHint: 'Add yearly living costs, housing, healthcare and travel.',
       itemCount: s.expenses.length,
       itemBuilder: (i) {
@@ -260,6 +283,7 @@ class LiabilitiesTab extends ConsumerWidget {
     return _ListTabScaffold(
       addLabel: 'Add debt',
       onAdd: c.addLiability,
+      onInterview: () => launchInterview(context, liabilitiesInterview()),
       emptyHint: 'Add mortgage, auto, student or other loans and credit cards.',
       itemCount: s.liabilities.length,
       itemBuilder: (i) {
@@ -327,6 +351,11 @@ class TaxesTab extends ConsumerWidget {
       padding: _pad,
       children: [
         const _Hint('Used to estimate federal income tax, capital-gains and Social Security taxation.'),
+        _gap,
+        Align(
+          alignment: Alignment.centerLeft,
+          child: GuidedButton(onPressed: () => launchInterview(context, taxesInterview())),
+        ),
         _gap,
         DropdownButtonFormField<FilingStatus>(
           value: s.profile.filingStatus,
@@ -401,25 +430,32 @@ class _ListTabScaffold extends StatelessWidget {
     required this.emptyHint,
     required this.itemCount,
     required this.itemBuilder,
+    this.onInterview,
   });
   final String addLabel;
   final VoidCallback onAdd;
   final String emptyHint;
   final int itemCount;
   final Widget Function(int) itemBuilder;
+  final VoidCallback? onInterview;
 
   @override
   Widget build(BuildContext context) {
     return ListView(
       padding: _pad,
       children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton.tonalIcon(
-            onPressed: onAdd,
-            icon: const Icon(Icons.add, size: 18),
-            label: Text(addLabel),
-          ),
+        Wrap(
+          spacing: 10,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            FilledButton.tonalIcon(
+              onPressed: onAdd,
+              icon: const Icon(Icons.add, size: 18),
+              label: Text(addLabel),
+            ),
+            if (onInterview != null) GuidedButton(onPressed: onInterview!),
+          ],
         ),
         if (itemCount == 0) Padding(padding: const EdgeInsets.only(top: 12), child: _Hint(emptyHint)),
         for (var i = 0; i < itemCount; i++) itemBuilder(i),
