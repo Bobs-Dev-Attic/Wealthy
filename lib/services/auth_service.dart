@@ -1,3 +1,6 @@
+import 'dart:math';
+
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/config.dart';
@@ -52,6 +55,7 @@ class AuthService {
       email: _emailFor(creds.userId),
       password: creds.accessCode,
     );
+    await _cache(creds);
     return creds;
   }
 
@@ -66,6 +70,7 @@ class AuthService {
     if (password == null || password.isEmpty) {
       try {
         await _client.auth.signInWithPassword(email: email, password: accessCode);
+        await _cache(AuthCredentials(userId: userId, accessCode: accessCode));
         return;
       } on AuthException {
         // Could be wrong code OR a password is required. Signal the UI to ask.
@@ -76,6 +81,7 @@ class AuthService {
       email: email,
       password: '$accessCode${AppConfig.passwordSeparator}$password',
     );
+    await _cache(AuthCredentials(userId: userId, accessCode: accessCode));
   }
 
   /// Attaches (or changes) a password second factor. Requires the original
@@ -99,5 +105,63 @@ class AuthService {
     }
   }
 
-  Future<void> signOut() => _client.auth.signOut();
+  Future<void> signOut() async {
+    await _clearCache();
+    await _client.auth.signOut();
+  }
+
+  // --- Access-code re-view / recovery -------------------------------------
+  // The access code is the user's password and is only stored hashed on the
+  // server, so it cannot be fetched back. We cache it locally on the device
+  // where the user signed up / logged in, so the QR can be shown again.
+  static const _kUser = 'wealthy_uid';
+  static const _kCode = 'wealthy_code';
+  static const _alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+  Future<void> _cache(AuthCredentials c) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_kUser, c.userId);
+    await p.setString(_kCode, c.accessCode);
+  }
+
+  Future<void> _clearCache() async {
+    final p = await SharedPreferences.getInstance();
+    await p.remove(_kUser);
+    await p.remove(_kCode);
+  }
+
+  /// The locally-cached credentials, if they belong to the current user.
+  Future<AuthCredentials?> cachedCredentials() async {
+    final p = await SharedPreferences.getInstance();
+    final uid = p.getString(_kUser);
+    final code = p.getString(_kCode);
+    if (uid == null || code == null) return null;
+    if (user != null && user!.id != uid) return null;
+    return AuthCredentials(userId: uid, accessCode: code);
+  }
+
+  /// Generates a fresh access code for the signed-in user (recovery when the
+  /// original was not saved). If [password] is given it is kept as the second
+  /// factor; otherwise login becomes access-code-only.
+  Future<AuthCredentials> regenerateAccessCode({String? password}) async {
+    final uid = user?.id;
+    if (uid == null) throw Exception('Not signed in');
+    final newCode = generateAccessCode();
+    final hasPw = password != null && password.isNotEmpty;
+    final composite = hasPw ? '$newCode${AppConfig.passwordSeparator}$password' : newCode;
+    await _client.auth.updateUser(UserAttributes(password: composite));
+    await _client.from('profiles').update({'has_password': hasPw}).eq('user_id', uid);
+    final creds = AuthCredentials(userId: uid, accessCode: newCode);
+    await _cache(creds);
+    return creds;
+  }
+
+  /// Crockford-ish base32 access code, grouped (e.g. ABCD-EFGH-JKLM-NPQR).
+  String generateAccessCode({int groups = 4, int len = 4}) {
+    final r = Random.secure();
+    return List.generate(
+      groups,
+      (_) => List.generate(len, (_) => _alphabet[r.nextInt(_alphabet.length)]).join(),
+    ).join('-');
+  }
 }
