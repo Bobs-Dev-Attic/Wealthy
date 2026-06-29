@@ -7,6 +7,7 @@ import '../../models/enums.dart';
 import '../../models/expense.dart';
 import '../../models/income_source.dart';
 import '../../models/liability.dart';
+import '../../services/engine/social_security.dart';
 import '../../state/plan_controller.dart';
 
 /// A guided "interview" — a series of questions that fill in one tab's data.
@@ -25,7 +26,20 @@ class IStep {
   final String? helper;
   final List<IField> fields;
   final void Function(WidgetRef ref, Map<String, dynamic> values) apply;
-  const IStep({required this.title, this.helper, required this.fields, required this.apply});
+
+  /// Optional reference button shown under the fields (e.g. a Social Security
+  /// table). [infoBuilder] gets the current field values and returns a dialog.
+  final String? infoLabel;
+  final Widget Function(BuildContext context, Map<String, dynamic> values)? infoBuilder;
+
+  const IStep({
+    required this.title,
+    this.helper,
+    required this.fields,
+    required this.apply,
+    this.infoLabel,
+    this.infoBuilder,
+  });
 }
 
 class Interview {
@@ -148,11 +162,30 @@ IStep _incomeStep(String name, IncomeType type, {int startAge = 65}) => IStep(
       },
     );
 
+IStep _socialSecurityStep() => IStep(
+      title: 'Social Security',
+      helper: 'Your estimated annual benefit and the age you plan to claim. '
+          'Tap the table to see how claiming age changes the amount.',
+      fields: const [
+        IField('amt', 'Annual amount', IKind.money),
+        IField('age', 'Claim age (default 67)', IKind.age),
+      ],
+      apply: (ref, v) {
+        final amt = (v['amt'] as double?) ?? 0;
+        if (amt <= 0) return;
+        final age = (v['age'] as int?) ?? 0;
+        _upsertIncome(ref, 'Social Security', IncomeType.socialSecurity, amt, age > 0 ? age : 67);
+      },
+      infoLabel: 'Show benefit-by-age table',
+      infoBuilder: (ctx, v) =>
+          SocialSecurityTableDialog(initialAnnual: (v['amt'] as double?) ?? 0),
+    );
+
 Interview incomeInterview() => Interview(
       title: 'Income',
       icon: Icons.payments_outlined,
       steps: [
-        _incomeStep('Social Security', IncomeType.socialSecurity, startAge: 67),
+        _socialSecurityStep(),
         _incomeStep('Pension', IncomeType.pension),
         _incomeStep('Annuity', IncomeType.annuity),
         _incomeStep('Part-time / employment', IncomeType.employment),
@@ -285,6 +318,102 @@ Interview youInterview() => Interview(
       ],
     );
 
+/// Reference table showing how the Social Security benefit changes with the age
+/// it is claimed (62–70), driven by an estimated full-retirement-age benefit.
+class SocialSecurityTableDialog extends StatefulWidget {
+  const SocialSecurityTableDialog({super.key, required this.initialAnnual});
+  final double initialAnnual;
+  @override
+  State<SocialSecurityTableDialog> createState() => _SocialSecurityTableDialogState();
+}
+
+class _SocialSecurityTableDialogState extends State<SocialSecurityTableDialog> {
+  late final TextEditingController _ctrl = TextEditingController(
+      text: widget.initialAnnual > 0 ? widget.initialAnnual.toStringAsFixed(0) : '');
+
+  double get _fra => parseMoney(_ctrl.text);
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fra = _fra;
+    return AlertDialog(
+      title: const Text('Social Security by claim age'),
+      content: SizedBox(
+        width: 440,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Enter your estimated benefit at full retirement age (67). The table '
+                'shows how claiming earlier or later changes it. Estimates only — use '
+                'your ssa.gov statement for exact figures.',
+                style: TextStyle(fontSize: 12.5),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _ctrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                    labelText: 'Annual benefit at age 67', prefixText: '\$ '),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 12),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  headingRowHeight: 34,
+                  dataRowMinHeight: 30,
+                  dataRowMaxHeight: 36,
+                  columnSpacing: 18,
+                  columns: const [
+                    DataColumn(label: Text('Age')),
+                    DataColumn(label: Text('% of FRA')),
+                    DataColumn(label: Text('Monthly')),
+                    DataColumn(label: Text('Annual')),
+                  ],
+                  rows: [
+                    for (var age = 62; age <= 70; age++)
+                      _row(age, fra, isFra: age == SocialSecurity.fra),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close')),
+      ],
+    );
+  }
+
+  DataRow _row(int age, double fra, {required bool isFra}) {
+    final pct = SocialSecurity.adjustForClaimAge(1.0, age);
+    final annual = SocialSecurity.adjustForClaimAge(fra, age);
+    final style = isFra ? const TextStyle(fontWeight: FontWeight.bold) : null;
+    Widget cell(String s) => Text(s, style: style);
+    return DataRow(
+      color: isFra
+          ? WidgetStatePropertyAll(Colors.tealAccent.withValues(alpha: 0.12))
+          : null,
+      cells: [
+        DataCell(cell(isFra ? '$age (FRA)' : '$age')),
+        DataCell(cell('${(pct * 100).round()}%')),
+        DataCell(cell(fra > 0 ? money(annual / 12) : '—')),
+        DataCell(cell(fra > 0 ? money(annual) : '—')),
+      ],
+    );
+  }
+}
+
 // --- The wizard UI -----------------------------------------------------------
 
 class _InterviewDialog extends ConsumerStatefulWidget {
@@ -311,7 +440,7 @@ class _InterviewDialogState extends ConsumerState<_InterviewDialog> {
     super.dispose();
   }
 
-  void _applyCurrent() {
+  Map<String, dynamic> _collect() {
     final step = _steps[_i];
     final values = <String, dynamic>{};
     for (final f in step.fields) {
@@ -324,8 +453,10 @@ class _InterviewDialogState extends ConsumerState<_InterviewDialog> {
         IKind.choice => _choices[key],
       };
     }
-    step.apply(ref, values);
+    return values;
   }
+
+  void _applyCurrent() => _steps[_i].apply(ref, _collect());
 
   void _next({required bool apply}) {
     if (apply) _applyCurrent();
@@ -379,6 +510,18 @@ class _InterviewDialogState extends ConsumerState<_InterviewDialog> {
                     _fieldWidget(f),
                     const SizedBox(height: 12),
                   ],
+                  if (step.infoLabel != null && step.infoBuilder != null)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () => showDialog(
+                          context: context,
+                          builder: (_) => step.infoBuilder!(context, _collect()),
+                        ),
+                        icon: const Icon(Icons.table_chart_outlined, size: 18),
+                        label: Text(step.infoLabel!),
+                      ),
+                    ),
                 ],
               ),
             ),
