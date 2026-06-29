@@ -56,7 +56,9 @@ class _PlannerScreenState extends ConsumerState<PlannerScreen> {
           ),
         ],
       ),
-      body: LayoutBuilder(
+      body: Stack(
+        children: [
+          LayoutBuilder(
         builder: (context, constraints) {
           const handleHeight = 18.0;
           final avail = constraints.maxHeight - handleHeight;
@@ -109,6 +111,68 @@ class _PlannerScreenState extends ConsumerState<PlannerScreen> {
             ],
           );
         },
+      ),
+          const _SaveIndicator(),
+        ],
+      ),
+    );
+  }
+}
+
+/// Top-center "Saving… / Saved" pill, driven by [saveStatusProvider].
+class _SaveIndicator extends ConsumerWidget {
+  const _SaveIndicator();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final status = ref.watch(saveStatusProvider);
+    return Positioned(
+      top: 10,
+      left: 0,
+      right: 0,
+      child: IgnorePointer(
+        child: Center(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 250),
+            transitionBuilder: (child, anim) =>
+                FadeTransition(opacity: anim, child: child),
+            child: status == SaveStatus.idle
+                ? const SizedBox.shrink()
+                : _Pill(key: ValueKey(status), status: status),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Pill extends StatelessWidget {
+  const _Pill({super.key, required this.status});
+  final SaveStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final saving = status == SaveStatus.saving;
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      elevation: 2,
+      borderRadius: BorderRadius.circular(20),
+      color: scheme.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (saving)
+              const SizedBox(
+                  width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+            else
+              Icon(Icons.check_circle, size: 16, color: Colors.greenAccent.shade400),
+            const SizedBox(width: 8),
+            Text(saving ? 'Saving…' : 'Saved',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          ],
+        ),
       ),
     );
   }

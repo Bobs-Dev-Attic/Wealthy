@@ -13,6 +13,41 @@ import '../models/profile.dart';
 import '../services/data_service.dart';
 import 'providers.dart';
 
+/// Background-save status surfaced to the UI as a small indicator.
+enum SaveStatus { idle, saving, saved }
+
+class SaveStatusNotifier extends StateNotifier<SaveStatus> {
+  SaveStatusNotifier() : super(SaveStatus.idle);
+  int _pending = 0;
+  Timer? _idle;
+
+  void begin() {
+    _pending++;
+    _idle?.cancel();
+    state = SaveStatus.saving;
+  }
+
+  void end() {
+    if (_pending > 0) _pending--;
+    if (_pending == 0) {
+      state = SaveStatus.saved;
+      _idle?.cancel();
+      _idle = Timer(const Duration(milliseconds: 1800), () {
+        if (_pending == 0 && mounted) state = SaveStatus.idle;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _idle?.cancel();
+    super.dispose();
+  }
+}
+
+final saveStatusProvider =
+    StateNotifierProvider<SaveStatusNotifier, SaveStatus>((_) => SaveStatusNotifier());
+
 /// The full set of planning inputs, held in memory and mutated synchronously so
 /// the results update in real time. Persistence happens in the background.
 @immutable
@@ -72,11 +107,12 @@ class PlanState {
 }
 
 class PlanController extends StateNotifier<PlanState> {
-  PlanController(this._ds, String uid) : super(PlanState.initial(uid)) {
+  PlanController(this._ds, String uid, this._save) : super(PlanState.initial(uid)) {
     _load();
   }
 
   final DataService _ds;
+  final SaveStatusNotifier _save;
   final Map<String, Timer> _timers = {};
 
   Future<void> _load() async {
@@ -103,11 +139,31 @@ class PlanController extends StateNotifier<PlanState> {
     }
   }
 
+  /// Runs a persistence future while tracking the save indicator.
+  Future<void> _trackVoid(Future<void> Function() fn) async {
+    _save.begin();
+    try {
+      await fn();
+    } catch (_) {
+    } finally {
+      _save.end();
+    }
+  }
+
+  Future<String?> _trackInsert(Future<String> Function() fn) async {
+    _save.begin();
+    try {
+      return await fn();
+    } catch (_) {
+      return null;
+    } finally {
+      _save.end();
+    }
+  }
+
   void _debounce(String key, Future<void> Function() action, {int ms = 900}) {
     _timers[key]?.cancel();
-    _timers[key] = Timer(Duration(milliseconds: ms), () {
-      action().catchError((_) {});
-    });
+    _timers[key] = Timer(Duration(milliseconds: ms), () => _trackVoid(action));
   }
 
   // --- Profile / assumptions ----------------------------------------------
@@ -130,23 +186,19 @@ class PlanController extends StateNotifier<PlanState> {
   // --- Accounts ------------------------------------------------------------
   Future<void> addAccount() async {
     const a = Account(name: 'New account', type: AccountType.taxable, balance: 0);
-    try {
-      final id = await _ds.insertAccount(a);
-      state = state.copyWith(accounts: [...state.accounts, a.copyWith(id: id)]);
-    } catch (_) {
-      state = state.copyWith(accounts: [...state.accounts, a]);
-    }
+    final id = await _trackInsert(() => _ds.insertAccount(a));
+    state = state.copyWith(accounts: [...state.accounts, id != null ? a.copyWith(id: id) : a]);
   }
 
   /// Adds a fully-formed account immediately (optimistic), then patches its id
   /// once persisted. Used by the guided interview.
   Future<void> createAccount(Account a) async {
     state = state.copyWith(accounts: [...state.accounts, a]);
-    try {
-      final id = await _ds.insertAccount(a);
+    final id = await _trackInsert(() => _ds.insertAccount(a));
+    if (id != null) {
       state = state.copyWith(
           accounts: [for (final x in state.accounts) identical(x, a) ? x.copyWith(id: id) : x]);
-    } catch (_) {}
+    }
   }
 
   void updateAccount(Account a) {
@@ -156,31 +208,23 @@ class PlanController extends StateNotifier<PlanState> {
 
   Future<void> removeAccount(Account a) async {
     state = state.copyWith(accounts: state.accounts.where((x) => x.id != a.id).toList());
-    if (a.id != null) {
-      try {
-        await _ds.deleteAccount(a.id!);
-      } catch (_) {}
-    }
+    if (a.id != null) await _trackVoid(() => _ds.deleteAccount(a.id!));
   }
 
   // --- Income --------------------------------------------------------------
   Future<void> addIncome() async {
     const i = IncomeSource(name: 'Social Security', type: IncomeType.socialSecurity, annualAmount: 0);
-    try {
-      final id = await _ds.insertIncome(i);
-      state = state.copyWith(incomes: [...state.incomes, i.copyWith(id: id)]);
-    } catch (_) {
-      state = state.copyWith(incomes: [...state.incomes, i]);
-    }
+    final id = await _trackInsert(() => _ds.insertIncome(i));
+    state = state.copyWith(incomes: [...state.incomes, id != null ? i.copyWith(id: id) : i]);
   }
 
   Future<void> createIncome(IncomeSource i) async {
     state = state.copyWith(incomes: [...state.incomes, i]);
-    try {
-      final id = await _ds.insertIncome(i);
+    final id = await _trackInsert(() => _ds.insertIncome(i));
+    if (id != null) {
       state = state.copyWith(
           incomes: [for (final x in state.incomes) identical(x, i) ? x.copyWith(id: id) : x]);
-    } catch (_) {}
+    }
   }
 
   void updateIncome(IncomeSource i) {
@@ -190,31 +234,23 @@ class PlanController extends StateNotifier<PlanState> {
 
   Future<void> removeIncome(IncomeSource i) async {
     state = state.copyWith(incomes: state.incomes.where((x) => x.id != i.id).toList());
-    if (i.id != null) {
-      try {
-        await _ds.deleteIncome(i.id!);
-      } catch (_) {}
-    }
+    if (i.id != null) await _trackVoid(() => _ds.deleteIncome(i.id!));
   }
 
   // --- Expenses ------------------------------------------------------------
   Future<void> addExpense() async {
     const e = Expense(name: 'New expense', category: ExpenseCategory.living, annualAmount: 0);
-    try {
-      final id = await _ds.insertExpense(e);
-      state = state.copyWith(expenses: [...state.expenses, e.copyWith(id: id)]);
-    } catch (_) {
-      state = state.copyWith(expenses: [...state.expenses, e]);
-    }
+    final id = await _trackInsert(() => _ds.insertExpense(e));
+    state = state.copyWith(expenses: [...state.expenses, id != null ? e.copyWith(id: id) : e]);
   }
 
   Future<void> createExpense(Expense e) async {
     state = state.copyWith(expenses: [...state.expenses, e]);
-    try {
-      final id = await _ds.insertExpense(e);
+    final id = await _trackInsert(() => _ds.insertExpense(e));
+    if (id != null) {
       state = state.copyWith(
           expenses: [for (final x in state.expenses) identical(x, e) ? x.copyWith(id: id) : x]);
-    } catch (_) {}
+    }
   }
 
   void updateExpense(Expense e) {
@@ -224,31 +260,23 @@ class PlanController extends StateNotifier<PlanState> {
 
   Future<void> removeExpense(Expense e) async {
     state = state.copyWith(expenses: state.expenses.where((x) => x.id != e.id).toList());
-    if (e.id != null) {
-      try {
-        await _ds.deleteExpense(e.id!);
-      } catch (_) {}
-    }
+    if (e.id != null) await _trackVoid(() => _ds.deleteExpense(e.id!));
   }
 
   // --- Liabilities ---------------------------------------------------------
   Future<void> addLiability() async {
     const l = Liability(name: 'New debt', type: LiabilityType.mortgage, balance: 0);
-    try {
-      final id = await _ds.insertLiability(l);
-      state = state.copyWith(liabilities: [...state.liabilities, l.copyWith(id: id)]);
-    } catch (_) {
-      state = state.copyWith(liabilities: [...state.liabilities, l]);
-    }
+    final id = await _trackInsert(() => _ds.insertLiability(l));
+    state = state.copyWith(liabilities: [...state.liabilities, id != null ? l.copyWith(id: id) : l]);
   }
 
   Future<void> createLiability(Liability l) async {
     state = state.copyWith(liabilities: [...state.liabilities, l]);
-    try {
-      final id = await _ds.insertLiability(l);
+    final id = await _trackInsert(() => _ds.insertLiability(l));
+    if (id != null) {
       state = state.copyWith(
           liabilities: [for (final x in state.liabilities) identical(x, l) ? x.copyWith(id: id) : x]);
-    } catch (_) {}
+    }
   }
 
   void updateLiability(Liability l) {
@@ -259,11 +287,7 @@ class PlanController extends StateNotifier<PlanState> {
 
   Future<void> removeLiability(Liability l) async {
     state = state.copyWith(liabilities: state.liabilities.where((x) => x.id != l.id).toList());
-    if (l.id != null) {
-      try {
-        await _ds.deleteLiability(l.id!);
-      } catch (_) {}
-    }
+    if (l.id != null) await _trackVoid(() => _ds.deleteLiability(l.id!));
   }
 
   @override
@@ -278,5 +302,6 @@ class PlanController extends StateNotifier<PlanState> {
 final planControllerProvider = StateNotifierProvider<PlanController, PlanState>((ref) {
   final ds = ref.watch(dataServiceProvider);
   final uid = ref.watch(supabaseClientProvider).auth.currentUser?.id ?? '';
-  return PlanController(ds, uid);
+  final save = ref.watch(saveStatusProvider.notifier);
+  return PlanController(ds, uid, save);
 });
