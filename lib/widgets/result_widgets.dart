@@ -118,6 +118,8 @@ class BandChart extends StatelessWidget {
         gridData: const FlGridData(show: true, drawVerticalLine: false),
         borderData: FlBorderData(show: false),
         titlesData: _titles(maxY <= 0 ? 1 : maxY * 1.1),
+        lineTouchData: moneyTouchData(
+            seriesLabels: const {0: 'Optimistic', 1: 'Median', 2: 'Pessimistic'}),
         lineBarsData: [
           _line(_spots(mc.bandP90), Colors.greenAccent.withValues(alpha: 0.7)),
           _line(_spots(mc.bandP50), Theme.of(context).colorScheme.primary, width: 3),
@@ -156,6 +158,7 @@ class NetWorthChart extends StatelessWidget {
         gridData: const FlGridData(show: true, drawVerticalLine: false),
         borderData: FlBorderData(show: false),
         titlesData: _titles(maxY <= 0 ? 1 : maxY * 1.1),
+        lineTouchData: moneyTouchData(),
         lineBarsData: [
           LineChartBarData(
             spots: spots,
@@ -172,6 +175,27 @@ class NetWorthChart extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Touch tooltip that formats values as whole dollars. [seriesLabels] names each
+/// bar (by index) for multi-line charts; the age (x) is shown as a header.
+LineTouchData moneyTouchData({Map<int, String>? seriesLabels}) {
+  return LineTouchData(
+    touchTooltipData: LineTouchTooltipData(
+      getTooltipColor: (_) => const Color(0xFF1E293B),
+      getTooltipItems: (spots) {
+        return List.generate(spots.length, (i) {
+          final s = spots[i];
+          final header = i == 0 ? 'Age ${s.x.toInt()}\n' : '';
+          final label = seriesLabels != null ? '${seriesLabels[s.barIndex] ?? ''}: ' : '';
+          return LineTooltipItem(
+            '$header$label${money(s.y)}',
+            const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12),
+          );
+        });
+      },
+    ),
+  );
 }
 
 FlTitlesData _titles(double maxY) => FlTitlesData(

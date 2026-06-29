@@ -304,6 +304,7 @@ class _SimpleLine extends StatelessWidget {
     return LineChart(LineChartData(
       minY: 0,
       maxY: maxY <= 0 ? 1 : maxY * 1.1,
+      lineTouchData: moneyTouchData(),
       gridData: const FlGridData(show: true, drawVerticalLine: false),
       borderData: FlBorderData(show: false),
       titlesData: FlTitlesData(
