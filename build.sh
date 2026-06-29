@@ -22,3 +22,16 @@ flutter build web --release --no-web-resources-cdn --pwa-strategy=none \
 BUILD_ID="${VERCEL_GIT_COMMIT_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo local)}"
 BUILD_ID="${BUILD_ID:0:7} $(date -u +%Y-%m-%dT%H:%MZ)"
 sed -i "s|__BUILD_ID__|${BUILD_ID}|g" build/web/index.html
+
+# Fully disable the service worker: strip its registration from the bootstrap so
+# no worker is ever registered, and remove the worker file. This prevents a
+# stale cached app shell from being served after a redeploy.
+python3 - <<'PY'
+import re, pathlib
+p = pathlib.Path('build/web/flutter_bootstrap.js')
+if p.exists():
+    s = p.read_text()
+    s = re.sub(r'serviceWorkerSettings:\s*\{[^}]*\}\s*,?', '', s)
+    p.write_text(s)
+PY
+rm -f build/web/flutter_service_worker.js

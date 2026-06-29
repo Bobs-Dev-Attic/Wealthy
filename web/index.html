@@ -7,7 +7,6 @@
   <meta name="description" content="Wealthy — plan your taxes and retirement. Monte Carlo projections, withdrawal rates, RMDs, Social Security and healthcare.">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
-  <!-- iOS meta tags & icons -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Wealthy">
@@ -21,7 +20,7 @@
     #loading { position: fixed; inset: 0; display: flex; flex-direction: column;
                align-items: center; justify-content: center; padding: 24px; text-align: center; }
     #loading .title { font-size: 20px; font-weight: 600; }
-    #loading .msg { margin-top: 10px; font-size: 13px; color: #94a3b8; max-width: 440px;
+    #loading .msg { margin-top: 10px; font-size: 13px; color: #fca5a5; max-width: 480px;
                     white-space: pre-wrap; word-break: break-word; }
     #loading button { margin-top: 18px; background: #0f766e; color: #fff; border: none;
                       padding: 10px 18px; border-radius: 8px; font-size: 13px; cursor: pointer; }
@@ -41,29 +40,50 @@
     (function () {
       var msg = document.getElementById('loading-msg');
       var btn = document.getElementById('loading-reload');
+      var lines = [];
       function show(text) {
-        if (msg) msg.textContent = text;
+        lines.push(text);
+        if (msg) msg.textContent = lines.slice(-4).join('\n');
         if (btn) btn.style.display = 'inline-block';
       }
-      // Surface any startup error instead of spinning forever.
-      window.addEventListener('error', function (e) {
-        show('Error: ' + ((e && e.message) || (e && e.type) || 'unknown'));
-      });
-      window.addEventListener('unhandledrejection', function (e) {
-        var r = e && e.reason;
-        show('Error: ' + ((r && r.message) || r || 'promise rejection'));
-      });
-      // Flutter dispatches this on the document once the first frame paints.
-      function clearOverlay() {
-        var el = document.getElementById('loading');
-        if (el) el.remove();
+      window.__wealthyShow = show;
+
+      // Self-heal: if a stale service worker is controlling this page, clear it
+      // once and reload so we are not served an old broken app shell.
+      if ('serviceWorker' in navigator && navigator.serviceWorker.controller
+          && !sessionStorage.getItem('wealthy_sw_cleared')) {
+        sessionStorage.setItem('wealthy_sw_cleared', '1');
+        Promise.all([
+          navigator.serviceWorker.getRegistrations().then(function (rs) {
+            return Promise.all(rs.map(function (r) { return r.unregister(); }));
+          }),
+          (window.caches && caches.keys) ? caches.keys().then(function (ks) {
+            return Promise.all(ks.map(function (k) { return caches.delete(k); }));
+          }) : Promise.resolve(),
+        ]).then(function () { location.reload(); }, function () { location.reload(); });
       }
+
+      // Surface real errors instead of an endless spinner.
+      function reasonText(r) {
+        if (!r) return 'unknown error';
+        if (typeof r === 'string') return r;
+        return (r.message || (r.toString && r.toString()) || 'unknown error');
+      }
+      window.addEventListener('error', function (e) { show('Error: ' + ((e && e.message) || 'load error')); });
+      window.addEventListener('unhandledrejection', function (e) { show('Error: ' + reasonText(e && e.reason)); });
+      var origErr = console.error;
+      console.error = function () {
+        try { show('Console: ' + Array.prototype.join.call(arguments, ' ')); } catch (_) {}
+        origErr.apply(console, arguments);
+      };
+
+      function clearOverlay() { var el = document.getElementById('loading'); if (el) el.remove(); }
       window.addEventListener('flutter-first-frame', clearOverlay);
       document.addEventListener('flutter-first-frame', clearOverlay);
-      // Watchdog: if nothing painted after 9s, offer a cache-busting reload.
+
       setTimeout(function () {
-        if (document.getElementById('loading')) {
-          show('Still loading. If this persists, clear cache & reload.');
+        if (document.getElementById('loading') && lines.length === 0) {
+          show('Still loading… if this persists, tap “Clear cache & reload”.');
         }
       }, 9000);
     })();
@@ -71,16 +91,19 @@
     function wealthyHardReload() {
       var done = function () { location.reload(); };
       try {
+        sessionStorage.removeItem('wealthy_sw_cleared');
+        var jobs = [];
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.getRegistrations().then(function (rs) {
-            rs.forEach(function (r) { r.unregister(); });
-          });
+          jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) {
+            return Promise.all(rs.map(function (r) { return r.unregister(); }));
+          }));
         }
         if (window.caches && caches.keys) {
-          caches.keys().then(function (ks) {
+          jobs.push(caches.keys().then(function (ks) {
             return Promise.all(ks.map(function (k) { return caches.delete(k); }));
-          }).then(done, done);
-        } else { done(); }
+          }));
+        }
+        Promise.all(jobs).then(done, done);
       } catch (e) { done(); }
     }
   </script>
