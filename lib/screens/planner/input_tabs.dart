@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/formatters.dart';
 import '../../models/enums.dart';
+import '../../models/holding.dart';
 import '../../models/liability.dart';
 import '../../state/plan_controller.dart';
 import '../../widgets/editor_fields.dart';
@@ -137,65 +138,204 @@ class InvestmentsTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(planControllerProvider);
     final c = ref.read(planControllerProvider.notifier);
-    return _ListTabScaffold(
-      addLabel: 'Add account',
-      onAdd: c.addAccount,
-      onInterview: () => launchInterview(context, investmentsInterview()),
-      totalLabel: 'Total assets',
-      totalValue: s.totalAssets,
-      emptyHint: 'Add your brokerage, 401(k)/IRA, Roth, HSA and cash accounts.',
-      itemCount: s.accounts.length,
-      itemBuilder: (i) {
-        final a = s.accounts[i];
-        return _RowCard(
-          key: ValueKey(a.id ?? i),
-          onRemove: () => c.removeAccount(a),
-          children: [
-            Row(children: [
-              Expanded(
-                flex: 2,
-                child: TextFormField(
-                  initialValue: a.name,
-                  decoration: const InputDecoration(labelText: 'Name'),
-                  onChanged: (v) => c.updateAccount(a.copyWith(name: v)),
-                ),
-              ),
-              _hgap,
-              Expanded(
-                flex: 2,
-                child: DropdownButtonFormField<AccountType>(
-                  value: a.type,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Type'),
-                  items: [
-                    for (final t in AccountType.values)
-                      DropdownMenuItem(value: t, child: Text(t.label, overflow: TextOverflow.ellipsis)),
-                  ],
-                  onChanged: (t) => c.updateAccount(a.copyWith(type: t)),
-                ),
-              ),
-            ]),
-            _gap,
-            Row(children: [
-              Expanded(
-                child: MoneyField(
-                  label: 'Balance',
-                  value: a.balance,
-                  onChanged: (v) => c.updateAccount(a.copyWith(balance: v)),
-                ),
-              ),
-              _hgap,
-              Expanded(
-                child: PercentField(
-                  label: 'Return',
-                  value: a.expectedReturn,
-                  onChanged: (v) => c.updateAccount(a.copyWith(expectedReturn: v)),
-                ),
-              ),
-            ]),
+    return ListView(
+      padding: _pad,
+      children: [
+        TabHeader(
+          totalLabel: 'Total assets',
+          totalValue: s.totalAssets,
+          actions: [
+            FilledButton.tonalIcon(
+              onPressed: c.addAccount,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add account'),
+            ),
+            GuidedButton(onPressed: () => launchInterview(context, investmentsInterview())),
           ],
-        );
-      },
+        ),
+        if (s.accounts.isEmpty && s.holdings.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 12),
+            child: _Hint('Add account balances, or individual holdings (stocks, ETFs, funds) below.'),
+          ),
+        for (final a in s.accounts)
+          _RowCard(
+            key: ValueKey(a.id),
+            onRemove: () => c.removeAccount(a),
+            children: [
+              Row(children: [
+                Expanded(
+                  flex: 2,
+                  child: TextFormField(
+                    initialValue: a.name,
+                    decoration: const InputDecoration(labelText: 'Name'),
+                    onChanged: (v) => c.updateAccount(a.copyWith(name: v)),
+                  ),
+                ),
+                _hgap,
+                Expanded(
+                  flex: 2,
+                  child: DropdownButtonFormField<AccountType>(
+                    value: a.type,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Type'),
+                    items: [
+                      for (final t in AccountType.values)
+                        DropdownMenuItem(value: t, child: Text(t.label, overflow: TextOverflow.ellipsis)),
+                    ],
+                    onChanged: (t) => c.updateAccount(a.copyWith(type: t)),
+                  ),
+                ),
+              ]),
+              _gap,
+              Row(children: [
+                Expanded(
+                  child: MoneyField(
+                    label: 'Balance',
+                    value: a.balance,
+                    onChanged: (v) => c.updateAccount(a.copyWith(balance: v)),
+                  ),
+                ),
+                _hgap,
+                Expanded(
+                  child: PercentField(
+                    label: 'Return',
+                    value: a.expectedReturn,
+                    onChanged: (v) => c.updateAccount(a.copyWith(expectedReturn: v)),
+                  ),
+                ),
+              ]),
+            ],
+          ),
+        const SizedBox(height: 14),
+        const _HoldingsSection(),
+      ],
+    );
+  }
+}
+
+/// Individual securities with live-ish prices, shown under Investments.
+class _HoldingsSection extends ConsumerStatefulWidget {
+  const _HoldingsSection();
+  @override
+  ConsumerState<_HoldingsSection> createState() => _HoldingsSectionState();
+}
+
+class _HoldingsSectionState extends ConsumerState<_HoldingsSection> {
+  bool _refreshing = false;
+
+  static String _shares(double n) =>
+      n == n.roundToDouble() ? n.toInt().toString() : n.toString();
+
+  @override
+  Widget build(BuildContext context) {
+    final s = ref.watch(planControllerProvider);
+    final c = ref.read(planControllerProvider.notifier);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          Expanded(
+            child: Text('Individual holdings (stocks, ETFs, funds)',
+                style: Theme.of(context).textTheme.titleSmall),
+          ),
+          Text(money(s.holdingsValue), style: const TextStyle(fontWeight: FontWeight.bold)),
+        ]),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 10,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            FilledButton.tonalIcon(
+              onPressed: c.addHolding,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add holding'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _refreshing
+                  ? null
+                  : () async {
+                      setState(() => _refreshing = true);
+                      await c.refreshPrices();
+                      if (mounted) setState(() => _refreshing = false);
+                    },
+              icon: _refreshing
+                  ? const SizedBox(
+                      width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.refresh, size: 18),
+              label: const Text('Refresh prices'),
+            ),
+          ],
+        ),
+        if (s.holdings.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 12),
+            child: _Hint('Enter a ticker (e.g. AAPL, VTI, VTSAX) and shares, then Refresh prices.'),
+          ),
+        for (final h in s.holdings)
+          _RowCard(
+            key: ValueKey(h.id),
+            onRemove: () => c.removeHolding(h),
+            children: [
+              Row(children: [
+                Expanded(
+                  flex: 3,
+                  child: TextFormField(
+                    initialValue: h.symbol,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: const InputDecoration(labelText: 'Ticker'),
+                    onChanged: (v) => c.updateHolding(h.copyWith(symbol: v.trim().toUpperCase())),
+                  ),
+                ),
+                _hgap,
+                Expanded(
+                  flex: 3,
+                  child: TextFormField(
+                    initialValue: h.shares == 0 ? '' : _shares(h.shares),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'Shares'),
+                    onChanged: (v) => c.updateHolding(h.copyWith(shares: double.tryParse(v) ?? 0)),
+                  ),
+                ),
+              ]),
+              _gap,
+              Row(children: [
+                Expanded(
+                  flex: 4,
+                  child: DropdownButtonFormField<AccountType>(
+                    value: h.accountType,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Account'),
+                    items: [
+                      for (final t in Holding.investable)
+                        DropdownMenuItem(value: t, child: Text(t.label, overflow: TextOverflow.ellipsis)),
+                    ],
+                    onChanged: (t) => c.updateHolding(h.copyWith(accountType: t)),
+                  ),
+                ),
+                _hgap,
+                Expanded(
+                  flex: 3,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(money(h.marketValue),
+                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                      Text(h.lastPrice != null ? '@ ${moneyCents(h.lastPrice!)}' : 'no price yet',
+                          style: TextStyle(
+                              fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                    ],
+                  ),
+                ),
+              ]),
+            ],
+          ),
+        const SizedBox(height: 8),
+        Text('Prices via Stooq — delayed / end-of-day, for estimates only.',
+            style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+      ],
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/account.dart';
 import '../models/expense.dart';
+import '../models/holding.dart';
 import '../models/income_source.dart';
 import '../models/liability.dart';
 import '../models/plan_assumptions.dart';
@@ -103,4 +104,39 @@ class DataService {
       _client.from('liabilities').update(l.toInsert(_uid)).eq('id', l.id!);
 
   Future<void> deleteLiability(String id) => _client.from('liabilities').delete().eq('id', id);
+
+  // --- Holdings ------------------------------------------------------------
+  Future<List<Holding>> listHoldings() async {
+    try {
+      final rows = await _client.from('holdings').select().eq('user_id', _uid).order('created_at');
+      return (rows as List).map((e) => Holding.fromJson(e as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<String> insertHolding(Holding h) async {
+    final row = await _client.from('holdings').insert(h.toInsert(_uid)).select('id').single();
+    return row['id'] as String;
+  }
+
+  Future<void> updateHolding(Holding h) =>
+      _client.from('holdings').update(h.toInsert(_uid)).eq('id', h.id!);
+
+  Future<void> deleteHolding(String id) => _client.from('holdings').delete().eq('id', id);
+
+  /// Fetches recent prices for [symbols] via the `quotes` edge function.
+  Future<Map<String, double>> fetchQuotes(List<String> symbols) async {
+    if (symbols.isEmpty) return {};
+    final res = await _client.functions.invoke('quotes', body: {'symbols': symbols});
+    final data = res.data;
+    final out = <String, double>{};
+    if (data is Map) {
+      data.forEach((k, v) {
+        final price = (v is num) ? v.toDouble() : double.tryParse('$v');
+        if (price != null && price > 0) out[k.toString().toUpperCase()] = price;
+      });
+    }
+    return out;
+  }
 }

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import '../../models/account.dart';
 import '../../models/enums.dart';
 import '../../models/expense.dart';
+import '../../models/holding.dart';
 import '../../models/income_source.dart';
 import '../../models/liability.dart';
 import '../../models/plan_assumptions.dart';
@@ -77,6 +78,7 @@ class PlanInputs {
     required List<IncomeSource> incomes,
     required List<Expense> expenses,
     List<Liability> liabilities = const [],
+    List<Holding> holdings = const [],
     required DateTime now,
   }) {
     double cash = 0, taxable = 0, basis = 0, trad = 0, roth = 0, hsa = 0;
@@ -93,6 +95,22 @@ class PlanInputs {
           roth += a.balance;
         case AccountType.hsa:
           hsa += a.balance;
+      }
+    }
+    for (final h in holdings) {
+      final v = h.marketValue;
+      switch (h.accountType) {
+        case AccountType.taxable:
+          taxable += v;
+          basis += h.costBasis;
+        case AccountType.traditional:
+          trad += v;
+        case AccountType.roth:
+          roth += v;
+        case AccountType.hsa:
+          hsa += v;
+        case AccountType.cash:
+          cash += v;
       }
     }
     return PlanInputs(
