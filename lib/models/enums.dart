@@ -4,7 +4,23 @@ enum AccountType { taxable, traditional, roth, hsa, cash }
 /// Income source kinds. `socialSecurity` is taxed specially (provisional income).
 enum IncomeType { socialSecurity, pension, annuity, employment, other }
 
-enum ExpenseCategory { living, healthcare, housing, travel, other }
+enum ExpenseCategory {
+  housing,
+  utilities,
+  food,
+  transportation,
+  healthcare,
+  insurance,
+  entertainment,
+  personal,
+  education,
+  childcare,
+  pets,
+  travel,
+  charity,
+  living,
+  other,
+}
 
 enum FilingStatus { single, marriedJoint, marriedSeparate, headOfHousehold }
 
@@ -53,17 +69,37 @@ extension IncomeTypeX on IncomeType {
 
 extension ExpenseCategoryX on ExpenseCategory {
   String get db => switch (this) {
-        ExpenseCategory.living => 'living',
-        ExpenseCategory.healthcare => 'healthcare',
         ExpenseCategory.housing => 'housing',
+        ExpenseCategory.utilities => 'utilities',
+        ExpenseCategory.food => 'food',
+        ExpenseCategory.transportation => 'transportation',
+        ExpenseCategory.healthcare => 'healthcare',
+        ExpenseCategory.insurance => 'insurance',
+        ExpenseCategory.entertainment => 'entertainment',
+        ExpenseCategory.personal => 'personal',
+        ExpenseCategory.education => 'education',
+        ExpenseCategory.childcare => 'childcare',
+        ExpenseCategory.pets => 'pets',
         ExpenseCategory.travel => 'travel',
+        ExpenseCategory.charity => 'charity',
+        ExpenseCategory.living => 'living',
         ExpenseCategory.other => 'other',
       };
   String get label => switch (this) {
-        ExpenseCategory.living => 'Living',
-        ExpenseCategory.healthcare => 'Healthcare',
         ExpenseCategory.housing => 'Housing',
+        ExpenseCategory.utilities => 'Utilities',
+        ExpenseCategory.food => 'Food & groceries',
+        ExpenseCategory.transportation => 'Transportation',
+        ExpenseCategory.healthcare => 'Healthcare',
+        ExpenseCategory.insurance => 'Insurance',
+        ExpenseCategory.entertainment => 'Entertainment',
+        ExpenseCategory.personal => 'Personal & clothing',
+        ExpenseCategory.education => 'Education',
+        ExpenseCategory.childcare => 'Childcare',
+        ExpenseCategory.pets => 'Pets',
         ExpenseCategory.travel => 'Travel',
+        ExpenseCategory.charity => 'Charity & gifts',
+        ExpenseCategory.living => 'Living (other essentials)',
         ExpenseCategory.other => 'Other',
       };
   static ExpenseCategory fromDb(String s) =>
