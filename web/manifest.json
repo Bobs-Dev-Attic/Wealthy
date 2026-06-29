@@ -1,0 +1,11 @@
+{
+  "name": "Wealthy",
+  "short_name": "Wealthy",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0b1220",
+  "theme_color": "#0F766E",
+  "description": "Plan your taxes and retirement with Monte Carlo projections.",
+  "orientation": "portrait-primary",
+  "prefer_related_applications": false
+}
