@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/account.dart';
 import '../models/enums.dart';
 import '../models/expense.dart';
+import '../models/holding.dart';
 import '../models/income_source.dart';
 import '../models/liability.dart';
 import '../models/plan_assumptions.dart';
@@ -59,6 +60,7 @@ class PlanState {
   final List<IncomeSource> incomes;
   final List<Expense> expenses;
   final List<Liability> liabilities;
+  final List<Holding> holdings;
 
   const PlanState({
     required this.loaded,
@@ -68,6 +70,7 @@ class PlanState {
     required this.incomes,
     required this.expenses,
     required this.liabilities,
+    required this.holdings,
   });
 
   factory PlanState.initial(String uid) => PlanState(
@@ -78,9 +81,12 @@ class PlanState {
         incomes: const [],
         expenses: const [],
         liabilities: const [],
+        holdings: const [],
       );
 
-  double get totalAssets => accounts.fold(0.0, (s, a) => s + a.balance);
+  double get holdingsValue => holdings.fold(0.0, (s, h) => s + h.marketValue);
+  double get totalAssets =>
+      accounts.fold(0.0, (s, a) => s + a.balance) + holdingsValue;
   double get totalLiabilities => liabilities.fold(0.0, (s, l) => s + l.balance);
   double get netWorth => totalAssets - totalLiabilities;
   double get annualIncome => incomes.fold(0.0, (s, i) => s + i.annualAmount);
@@ -94,6 +100,7 @@ class PlanState {
     List<IncomeSource>? incomes,
     List<Expense>? expenses,
     List<Liability>? liabilities,
+    List<Holding>? holdings,
   }) =>
       PlanState(
         loaded: loaded ?? this.loaded,
@@ -103,6 +110,7 @@ class PlanState {
         incomes: incomes ?? this.incomes,
         expenses: expenses ?? this.expenses,
         liabilities: liabilities ?? this.liabilities,
+        holdings: holdings ?? this.holdings,
       );
 }
 
@@ -124,6 +132,7 @@ class PlanController extends StateNotifier<PlanState> {
         _ds.listIncome(),
         _ds.listExpenses(),
         _ds.listLiabilities(),
+        _ds.listHoldings(),
       ]);
       state = PlanState(
         loaded: true,
@@ -133,6 +142,7 @@ class PlanController extends StateNotifier<PlanState> {
         incomes: r[3] as List<IncomeSource>,
         expenses: r[4] as List<Expense>,
         liabilities: r[5] as List<Liability>,
+        holdings: r[6] as List<Holding>,
       );
     } catch (_) {
       state = state.copyWith(loaded: true);
@@ -288,6 +298,52 @@ class PlanController extends StateNotifier<PlanState> {
   Future<void> removeLiability(Liability l) async {
     state = state.copyWith(liabilities: state.liabilities.where((x) => x.id != l.id).toList());
     if (l.id != null) await _trackVoid(() => _ds.deleteLiability(l.id!));
+  }
+
+  // --- Holdings ------------------------------------------------------------
+  Future<void> addHolding() async {
+    const h = Holding(symbol: '', shares: 0);
+    final id = await _trackInsert(() => _ds.insertHolding(h));
+    state = state.copyWith(holdings: [...state.holdings, id != null ? h.copyWith(id: id) : h]);
+  }
+
+  void updateHolding(Holding h) {
+    state = state.copyWith(holdings: [for (final x in state.holdings) x.id == h.id ? h : x]);
+    if (h.id != null) _debounce('hold:${h.id}', () => _ds.updateHolding(h));
+  }
+
+  Future<void> removeHolding(Holding h) async {
+    state = state.copyWith(holdings: state.holdings.where((x) => x.id != h.id).toList());
+    if (h.id != null) await _trackVoid(() => _ds.deleteHolding(h.id!));
+  }
+
+  /// Fetches recent prices for all holdings and stores them.
+  Future<void> refreshPrices() async {
+    final symbols =
+        state.holdings.map((h) => h.symbol.trim().toUpperCase()).where((s) => s.isNotEmpty).toSet();
+    if (symbols.isEmpty) return;
+    _save.begin();
+    try {
+      final quotes = await _ds.fetchQuotes(symbols.toList());
+      final now = DateTime.now();
+      final updated = [
+        for (final h in state.holdings)
+          quotes[h.symbol.toUpperCase()] != null
+              ? h.copyWith(lastPrice: quotes[h.symbol.toUpperCase()], lastPriceAt: now)
+              : h,
+      ];
+      state = state.copyWith(holdings: updated);
+      for (final h in updated) {
+        if (h.id != null && quotes[h.symbol.toUpperCase()] != null) {
+          try {
+            await _ds.updateHolding(h);
+          } catch (_) {}
+        }
+      }
+    } catch (_) {
+    } finally {
+      _save.end();
+    }
   }
 
   @override

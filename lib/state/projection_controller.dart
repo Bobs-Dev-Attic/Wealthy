@@ -31,6 +31,7 @@ class ProjectionController extends StateNotifier<ProjectionResult?> {
         incomes: s.incomes,
         expenses: s.expenses,
         liabilities: s.liabilities,
+        holdings: s.holdings,
         now: DateTime.now(),
       );
       state = RetirementProjection.project(inputs);
