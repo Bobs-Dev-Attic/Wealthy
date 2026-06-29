@@ -25,6 +25,13 @@
 </head>
 <body>
   <div id="loading">Loading Wealthy…</div>
+  <script>
+    // Remove the bootstrap loading overlay once Flutter paints its first frame.
+    window.addEventListener('flutter-first-frame', function () {
+      var el = document.getElementById('loading');
+      if (el) el.remove();
+    });
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
