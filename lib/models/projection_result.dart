@@ -11,6 +11,8 @@ class YearLedger {
   final double endPortfolio;
   final double withdrawalRate; // grossWithdrawal / startPortfolio
   final bool shortfall; // could not fund desired spending this year
+  final double liabilityBalance; // remaining debt at year end
+  final double netWorth; // endPortfolio - liabilityBalance
 
   const YearLedger({
     required this.age,
@@ -24,6 +26,8 @@ class YearLedger {
     required this.endPortfolio,
     required this.withdrawalRate,
     required this.shortfall,
+    this.liabilityBalance = 0,
+    this.netWorth = 0,
   });
 }
 
@@ -68,15 +72,19 @@ class ProjectionResult {
   final List<YearLedger> ledger;
   final double deterministicEnding;
   final MonteCarloResult monteCarlo;
-  final double currentNetWorth;
+  final double currentAssets;
+  final double currentLiabilities;
   final double firstYearWithdrawalRate;
   final int? depletionAge; // age the deterministic plan runs out, or null
+
+  double get currentNetWorth => currentAssets - currentLiabilities;
 
   const ProjectionResult({
     required this.ledger,
     required this.deterministicEnding,
     required this.monteCarlo,
-    required this.currentNetWorth,
+    required this.currentAssets,
+    required this.currentLiabilities,
     required this.firstYearWithdrawalRate,
     required this.depletionAge,
   });

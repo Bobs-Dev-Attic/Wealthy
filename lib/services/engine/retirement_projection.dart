@@ -4,6 +4,7 @@ import '../../models/account.dart';
 import '../../models/enums.dart';
 import '../../models/expense.dart';
 import '../../models/income_source.dart';
+import '../../models/liability.dart';
 import '../../models/plan_assumptions.dart';
 import '../../models/profile.dart';
 import '../../models/projection_result.dart';
@@ -31,6 +32,7 @@ class PlanInputs {
 
   final List<IncomeSource> incomes;
   final List<Expense> expenses;
+  final List<Liability> liabilities;
 
   final double inflation;
   final double healthcareInflation;
@@ -54,6 +56,7 @@ class PlanInputs {
     required this.hsa,
     required this.incomes,
     required this.expenses,
+    this.liabilities = const [],
     required this.inflation,
     required this.healthcareInflation,
     required this.marketReturnMean,
@@ -65,6 +68,7 @@ class PlanInputs {
   });
 
   double get totalPortfolio => cash + taxable + traditional + roth + hsa;
+  double get totalLiabilities => liabilities.fold(0.0, (s, l) => s + l.balance);
 
   factory PlanInputs.from({
     required Profile profile,
@@ -72,6 +76,7 @@ class PlanInputs {
     required List<Account> accounts,
     required List<IncomeSource> incomes,
     required List<Expense> expenses,
+    List<Liability> liabilities = const [],
     required DateTime now,
   }) {
     double cash = 0, taxable = 0, basis = 0, trad = 0, roth = 0, hsa = 0;
@@ -103,6 +108,7 @@ class PlanInputs {
       hsa: hsa,
       incomes: incomes,
       expenses: expenses,
+      liabilities: liabilities,
       inflation: assumptions.inflation,
       healthcareInflation: assumptions.healthcareInflation,
       marketReturnMean: assumptions.marketReturnMean,
@@ -151,6 +157,13 @@ class RetirementProjection {
               e.category == ExpenseCategory.healthcare ? inp.healthcareInflation : e.inflationRate;
           expenses += e.annualAmount * math.pow(1 + rate, t);
         }
+      }
+
+      // --- Liabilities: add the payment while outstanding; track the balance ---
+      double liabilityBalanceEnd = 0;
+      for (final l in inp.liabilities) {
+        if (t < l.payoffYears) expenses += l.annualPayment;
+        liabilityBalanceEnd += l.balanceAfter((t + 1).toDouble());
       }
 
       // --- Guaranteed income (SS taxed specially) ---
@@ -327,6 +340,8 @@ class RetirementProjection {
         endPortfolio: endPortfolio,
         withdrawalRate: startPortfolio > 0 ? g / startPortfolio : 0,
         shortfall: shortfall,
+        liabilityBalance: liabilityBalanceEnd,
+        netWorth: endPortfolio - liabilityBalanceEnd,
       ));
     }
 
@@ -354,7 +369,8 @@ class RetirementProjection {
       ledger: deterministic.years,
       deterministicEnding: deterministic.endingBalance,
       monteCarlo: mc,
-      currentNetWorth: inp.totalPortfolio,
+      currentAssets: inp.totalPortfolio,
+      currentLiabilities: inp.totalLiabilities,
       firstYearWithdrawalRate:
           deterministic.years.isNotEmpty ? deterministic.years.first.withdrawalRate : 0,
       depletionAge: depletion,

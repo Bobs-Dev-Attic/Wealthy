@@ -9,13 +9,7 @@ import 'core/theme.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/security_screen.dart';
 import 'screens/auth/signup_screen.dart';
-import 'screens/dashboard/dashboard_screen.dart';
-import 'screens/data/accounts_screen.dart';
-import 'screens/data/expenses_screen.dart';
-import 'screens/data/income_screen.dart';
-import 'screens/data/plan_screen.dart';
-import 'screens/data/profile_screen.dart';
-import 'screens/projections/projections_screen.dart';
+import 'screens/planner/planner_screen.dart';
 import 'state/providers.dart';
 
 class WealthyApp extends ConsumerWidget {
@@ -91,13 +85,7 @@ final _routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
       GoRoute(path: '/signup', builder: (_, __) => const SignupScreen()),
-      GoRoute(path: '/', builder: (_, __) => const DashboardScreen()),
-      GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
-      GoRoute(path: '/accounts', builder: (_, __) => const AccountsScreen()),
-      GoRoute(path: '/income', builder: (_, __) => const IncomeScreen()),
-      GoRoute(path: '/expenses', builder: (_, __) => const ExpensesScreen()),
-      GoRoute(path: '/plan', builder: (_, __) => const PlanScreen()),
-      GoRoute(path: '/projections', builder: (_, __) => const ProjectionsScreen()),
+      GoRoute(path: '/', builder: (_, __) => const PlannerScreen()),
       GoRoute(path: '/security', builder: (_, __) => const SecurityScreen()),
     ],
   );
