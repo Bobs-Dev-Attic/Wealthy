@@ -36,6 +36,15 @@
   </div>
 
   <script>
+    // Stub the Corbado passkeys Web SDK that supabase_flutter pulls in
+    // transitively. We do not use passkeys, but its Flutter web plugin registers
+    // at startup and calls PasskeyAuthenticator.init(); without this global that
+    // throws "Cannot read properties of undefined (reading 'init')" and the app
+    // never paints a frame. A no-op init keeps startup alive.
+    window.PasskeyAuthenticator = window.PasskeyAuthenticator || { init: function () {} };
+  </script>
+
+  <script>
     window.WEALTHY_BUILD = "__BUILD_ID__";
     (function () {
       var msg = document.getElementById('loading-msg');
