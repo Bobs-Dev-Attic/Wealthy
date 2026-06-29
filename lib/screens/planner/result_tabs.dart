@@ -313,8 +313,8 @@ class _SimpleLine extends StatelessWidget {
         leftTitles: AxisTitles(
           sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 64,
-              getTitlesWidget: (v, _) => Text(money(v), style: const TextStyle(fontSize: 9))),
+              reservedSize: 46,
+              getTitlesWidget: (v, _) => Text(moneyCompact(v), style: const TextStyle(fontSize: 9))),
         ),
         bottomTitles: AxisTitles(
           sideTitles: SideTitles(
