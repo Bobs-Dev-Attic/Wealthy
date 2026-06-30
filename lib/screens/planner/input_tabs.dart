@@ -5,6 +5,7 @@ import '../../core/formatters.dart';
 import '../../models/enums.dart';
 import '../../models/holding.dart';
 import '../../models/liability.dart';
+import '../../models/tax_profile.dart';
 import '../../state/plan_controller.dart';
 import '../../widgets/editor_fields.dart';
 import 'interview.dart';
@@ -617,13 +618,20 @@ class LiabilitiesTab extends ConsumerWidget {
   }
 }
 
-/// Taxes — filing status and state.
+/// Taxes — filing status, state, and the tax-return figures used for
+/// optimization. Mirrors the fields collected by the guided interview so they
+/// can also be edited directly here.
 class TaxesTab extends ConsumerWidget {
   const TaxesTab({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(planControllerProvider);
     final c = ref.read(planControllerProvider.notifier);
+    final t = s.taxProfile;
+    void set(TaxProfile next) => c.setTaxProfile(next);
+
+    Widget pair(Widget a, Widget b) => Row(children: [Expanded(child: a), _hgap, Expanded(child: b)]);
+
     return ListView(
       padding: _pad,
       children: [
@@ -650,6 +658,54 @@ class TaxesTab extends ConsumerWidget {
           decoration: const InputDecoration(
               labelText: 'State (optional)', helperText: 'For context; state tax is not modeled'),
           onChanged: (v) => c.setProfile(s.profile.copyWith(state: v)),
+        ),
+        const SizedBox(height: 18),
+        _SectionLabel('Tax-return figures'),
+        const _Hint('From your most recent federal return (Form 1040). Drives the '
+            'tax-optimization strategies on the Taxes results tab.'),
+        _gap,
+        pair(
+          MoneyField(label: 'Wages & salary', value: t.wages, onChanged: (v) => set(t.copyWith(wages: v))),
+          MoneyField(label: 'Taxable interest', value: t.interest, onChanged: (v) => set(t.copyWith(interest: v))),
+        ),
+        _gap,
+        pair(
+          MoneyField(label: 'Ordinary dividends', value: t.ordinaryDividends, onChanged: (v) => set(t.copyWith(ordinaryDividends: v))),
+          MoneyField(label: 'Qualified dividends', value: t.qualifiedDividends, onChanged: (v) => set(t.copyWith(qualifiedDividends: v))),
+        ),
+        _gap,
+        pair(
+          MoneyField(label: 'Long-term gains', value: t.longTermGains, onChanged: (v) => set(t.copyWith(longTermGains: v))),
+          MoneyField(label: 'Short-term gains', value: t.shortTermGains, onChanged: (v) => set(t.copyWith(shortTermGains: v))),
+        ),
+        _gap,
+        pair(
+          MoneyField(label: 'Business income', value: t.businessIncome, onChanged: (v) => set(t.copyWith(businessIncome: v))),
+          MoneyField(label: 'IRA/pension distributions', value: t.iraPensionDistributions, onChanged: (v) => set(t.copyWith(iraPensionDistributions: v))),
+        ),
+        _gap,
+        pair(
+          MoneyField(label: 'Social Security', value: t.ssBenefits, onChanged: (v) => set(t.copyWith(ssBenefits: v))),
+          MoneyField(label: 'Other income', value: t.otherIncome, onChanged: (v) => set(t.copyWith(otherIncome: v))),
+        ),
+        _gap,
+        pair(
+          MoneyField(label: 'Pre-tax contributions', value: t.pretaxContributions, onChanged: (v) => set(t.copyWith(pretaxContributions: v))),
+          DropdownButtonFormField<bool>(
+            value: t.usesItemized,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'Deduction method'),
+            items: const [
+              DropdownMenuItem(value: false, child: Text('Standard deduction')),
+              DropdownMenuItem(value: true, child: Text('Itemize')),
+            ],
+            onChanged: (v) => set(t.copyWith(usesItemized: v ?? false)),
+          ),
+        ),
+        _gap,
+        pair(
+          MoneyField(label: 'Itemized deductions', value: t.itemizedDeductions, onChanged: (v) => set(t.copyWith(itemizedDeductions: v))),
+          MoneyField(label: 'Total tax paid', value: t.estTotalTax, onChanged: (v) => set(t.copyWith(estTotalTax: v))),
         ),
       ],
     );
@@ -779,4 +835,14 @@ class _Hint extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(text,
       style: TextStyle(fontSize: 12.5, color: Theme.of(context).colorScheme.onSurfaceVariant));
+}
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.text);
+  final String text;
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: Text(text, style: Theme.of(context).textTheme.titleSmall),
+      );
 }
