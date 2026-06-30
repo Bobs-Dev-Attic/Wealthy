@@ -46,20 +46,46 @@ class EditorSheet extends StatelessWidget {
   }
 }
 
-/// A text field for dollar amounts. Reports a parsed [double].
+/// A text field for dollar amounts. Reports a parsed [double]. When [help] is
+/// set, an info icon is shown that reveals the text on hover (web) or tap.
 class MoneyField extends StatelessWidget {
-  const MoneyField({super.key, required this.label, required this.value, required this.onChanged});
+  const MoneyField(
+      {super.key, required this.label, required this.value, required this.onChanged, this.help});
   final String label;
   final double value;
   final ValueChanged<double> onChanged;
+  final String? help;
 
   @override
   Widget build(BuildContext context) {
     return TextFormField(
       initialValue: value == 0 ? '' : value.toStringAsFixed(0),
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      decoration: InputDecoration(labelText: label, prefixText: '\$ '),
+      decoration: InputDecoration(
+        labelText: label,
+        prefixText: '\$ ',
+        suffixIcon: help == null ? null : HelpIcon(message: help!),
+      ),
       onChanged: (v) => onChanged(parseMoney(v)),
+    );
+  }
+}
+
+/// A small info icon whose tooltip appears on hover (web) or tap (touch).
+class HelpIcon extends StatelessWidget {
+  const HelpIcon({super.key, required this.message});
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: message,
+      triggerMode: TooltipTriggerMode.tap,
+      showDuration: const Duration(seconds: 8),
+      preferBelow: false,
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      child: Icon(Icons.info_outline,
+          size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
     );
   }
 }

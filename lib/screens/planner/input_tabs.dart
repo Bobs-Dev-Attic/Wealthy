@@ -665,32 +665,87 @@ class TaxesTab extends ConsumerWidget {
             'tax-optimization strategies on the Taxes results tab.'),
         _gap,
         pair(
-          MoneyField(label: 'Wages & salary', value: t.wages, onChanged: (v) => set(t.copyWith(wages: v))),
-          MoneyField(label: 'Taxable interest', value: t.interest, onChanged: (v) => set(t.copyWith(interest: v))),
+          MoneyField(
+              label: 'Wages & salary',
+              value: t.wages,
+              onChanged: (v) => set(t.copyWith(wages: v)),
+              help: 'Form 1040, line 1a — total wages, salaries and tips '
+                  '(box 1 of your W-2s).'),
+          MoneyField(
+              label: 'Taxable interest',
+              value: t.interest,
+              onChanged: (v) => set(t.copyWith(interest: v)),
+              help: 'Form 1040, line 2b — taxable interest (totaled on '
+                  'Schedule B if over \$1,500).'),
         ),
         _gap,
         pair(
-          MoneyField(label: 'Ordinary dividends', value: t.ordinaryDividends, onChanged: (v) => set(t.copyWith(ordinaryDividends: v))),
-          MoneyField(label: 'Qualified dividends', value: t.qualifiedDividends, onChanged: (v) => set(t.copyWith(qualifiedDividends: v))),
+          MoneyField(
+              label: 'Ordinary dividends',
+              value: t.ordinaryDividends,
+              onChanged: (v) => set(t.copyWith(ordinaryDividends: v)),
+              help: 'Form 1040, line 3b — total ordinary dividends '
+                  '(box 1a of your 1099-DIVs).'),
+          MoneyField(
+              label: 'Qualified dividends',
+              value: t.qualifiedDividends,
+              onChanged: (v) => set(t.copyWith(qualifiedDividends: v)),
+              help: 'Form 1040, line 3a — the qualified portion '
+                  '(box 1b of your 1099-DIVs).'),
         ),
         _gap,
         pair(
-          MoneyField(label: 'Long-term gains', value: t.longTermGains, onChanged: (v) => set(t.copyWith(longTermGains: v))),
-          MoneyField(label: 'Short-term gains', value: t.shortTermGains, onChanged: (v) => set(t.copyWith(shortTermGains: v))),
+          MoneyField(
+              label: 'Long-term gains',
+              value: t.longTermGains,
+              onChanged: (v) => set(t.copyWith(longTermGains: v)),
+              help: 'Schedule D, line 15 (net long-term gain) — flows to '
+                  'Form 1040, line 7.'),
+          MoneyField(
+              label: 'Short-term gains',
+              value: t.shortTermGains,
+              onChanged: (v) => set(t.copyWith(shortTermGains: v)),
+              help: 'Schedule D, line 7 (net short-term gain) — flows to '
+                  'Form 1040, line 7.'),
         ),
         _gap,
         pair(
-          MoneyField(label: 'Business income', value: t.businessIncome, onChanged: (v) => set(t.copyWith(businessIncome: v))),
-          MoneyField(label: 'IRA/pension distributions', value: t.iraPensionDistributions, onChanged: (v) => set(t.copyWith(iraPensionDistributions: v))),
+          MoneyField(
+              label: 'Business income',
+              value: t.businessIncome,
+              onChanged: (v) => set(t.copyWith(businessIncome: v)),
+              help: 'Net profit from Schedule C (or K-1) — reported on '
+                  'Schedule 1, line 3, then Form 1040, line 8.'),
+          MoneyField(
+              label: 'IRA/pension distributions',
+              value: t.iraPensionDistributions,
+              onChanged: (v) => set(t.copyWith(iraPensionDistributions: v)),
+              help: 'Form 1040 — taxable IRA distributions (line 4b) plus '
+                  'taxable pensions & annuities (line 5b).'),
         ),
         _gap,
         pair(
-          MoneyField(label: 'Social Security', value: t.ssBenefits, onChanged: (v) => set(t.copyWith(ssBenefits: v))),
-          MoneyField(label: 'Other income', value: t.otherIncome, onChanged: (v) => set(t.copyWith(otherIncome: v))),
+          MoneyField(
+              label: 'Social Security',
+              value: t.ssBenefits,
+              onChanged: (v) => set(t.copyWith(ssBenefits: v)),
+              help: 'Form 1040, line 6a — gross Social Security benefits '
+                  '(box 5 of your SSA-1099).'),
+          MoneyField(
+              label: 'Other income',
+              value: t.otherIncome,
+              onChanged: (v) => set(t.copyWith(otherIncome: v)),
+              help: 'Additional income from Schedule 1, line 9 (rental, '
+                  'royalties, unemployment, etc.) — Form 1040, line 8.'),
         ),
         _gap,
         pair(
-          MoneyField(label: 'Pre-tax contributions', value: t.pretaxContributions, onChanged: (v) => set(t.copyWith(pretaxContributions: v))),
+          MoneyField(
+              label: 'Pre-tax contributions',
+              value: t.pretaxContributions,
+              onChanged: (v) => set(t.copyWith(pretaxContributions: v)),
+              help: '401(k)/403(b): box 12 code D/E/G on your W-2. '
+                  'Deductible IRA: Schedule 1, line 20. HSA: Schedule 1, line 13.'),
           DropdownButtonFormField<bool>(
             value: t.usesItemized,
             isExpanded: true,
@@ -704,8 +759,17 @@ class TaxesTab extends ConsumerWidget {
         ),
         _gap,
         pair(
-          MoneyField(label: 'Itemized deductions', value: t.itemizedDeductions, onChanged: (v) => set(t.copyWith(itemizedDeductions: v))),
-          MoneyField(label: 'Total tax paid', value: t.estTotalTax, onChanged: (v) => set(t.copyWith(estTotalTax: v))),
+          MoneyField(
+              label: 'Itemized deductions',
+              value: t.itemizedDeductions,
+              onChanged: (v) => set(t.copyWith(itemizedDeductions: v)),
+              help: 'Schedule A, line 17 (total itemized deductions) — '
+                  'flows to Form 1040, line 12.'),
+          MoneyField(
+              label: 'Total tax paid',
+              value: t.estTotalTax,
+              onChanged: (v) => set(t.copyWith(estTotalTax: v)),
+              help: 'Form 1040, line 24 — your total tax for the year.'),
         ),
       ],
     );
