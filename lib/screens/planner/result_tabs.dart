@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/formatters.dart';
 import '../../models/enums.dart';
+import '../../services/engine/tax_optimization.dart';
 import '../../state/plan_controller.dart';
 import '../../state/projection_controller.dart';
 import '../../widgets/result_widgets.dart';
@@ -154,13 +155,20 @@ class TaxesView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final p = ref.watch(projectionControllerProvider);
-    if (p == null || p.ledger.isEmpty) return const _Empty('Add income and accounts to estimate taxes.');
-    final lifetime = p.ledger.fold(0.0, (s, y) => s + y.taxes);
-    final spots = [for (final y in p.ledger) FlSpot(y.age.toDouble(), y.taxes)];
-    final maxY = p.ledger.fold(0.0, (m, y) => y.taxes > m ? y.taxes : m);
-    return ListView(
-      padding: _pad,
-      children: [
+    final s = ref.watch(planControllerProvider);
+    final optimization = s.taxProfile.hasData
+        ? TaxOptimization.analyze(s.taxProfile, s.profile.filingStatus)
+        : null;
+    if ((p == null || p.ledger.isEmpty) && optimization == null) {
+      return const _Empty('Add income and accounts — or run the Taxes interview — '
+          'to estimate taxes and optimization strategies.');
+    }
+    final children = <Widget>[];
+    if (p != null && p.ledger.isNotEmpty) {
+      final lifetime = p.ledger.fold(0.0, (sum, y) => sum + y.taxes);
+      final spots = [for (final y in p.ledger) FlSpot(y.age.toDouble(), y.taxes)];
+      final maxY = p.ledger.fold(0.0, (m, y) => y.taxes > m ? y.taxes : m);
+      children.addAll([
         Row(children: [
           Expanded(child: StatTile(label: 'Lifetime taxes (est.)', value: money(lifetime))),
           const SizedBox(width: 8),
@@ -171,8 +179,87 @@ class TaxesView extends ConsumerWidget {
           height: 220,
           child: _SimpleLine(spots: spots, maxY: maxY, color: Colors.orangeAccent),
         ),
-        const _Disclaimer(),
-      ],
+      ]);
+    }
+    if (optimization != null) {
+      children.add(_TaxOptimizationCard(a: optimization));
+    }
+    children.add(const _Disclaimer());
+    return ListView(padding: _pad, children: children);
+  }
+}
+
+/// Current-year tax snapshot plus actionable optimization strategies, computed
+/// from the figures entered in the Taxes interview.
+class _TaxOptimizationCard extends StatelessWidget {
+  const _TaxOptimizationCard({required this.a});
+  final TaxAnalysis a;
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(top: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Icon(Icons.insights_outlined, size: 18),
+              const SizedBox(width: 8),
+              Text('Tax optimization (current year)',
+                  style: Theme.of(context).textTheme.titleSmall),
+            ]),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(child: StatTile(label: 'Est. AGI', value: money(a.agi))),
+              const SizedBox(width: 8),
+              Expanded(child: StatTile(label: 'Taxable income', value: money(a.taxableIncome))),
+            ]),
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(child: StatTile(label: 'Est. federal tax', value: money(a.estimatedTax))),
+              const SizedBox(width: 8),
+              Expanded(child: StatTile(label: 'Marginal rate', value: percent(a.marginalRate))),
+              const SizedBox(width: 8),
+              Expanded(child: StatTile(label: 'Effective rate', value: percent(a.effectiveRate))),
+            ]),
+            const SizedBox(height: 12),
+            Text('Strategies', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 4),
+            for (final tip in a.tips) _TipRow(tip: tip),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TipRow extends StatelessWidget {
+  const _TipRow({required this.tip});
+  final TaxTip tip;
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 2, right: 8),
+            child: Icon(Icons.check_circle_outline, size: 16, color: Colors.tealAccent),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(tip.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                const SizedBox(height: 2),
+                Text(tip.detail, style: const TextStyle(fontSize: 12.5)),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

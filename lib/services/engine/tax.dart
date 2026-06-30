@@ -97,6 +97,27 @@ class TaxEngine {
     return tax / gross;
   }
 
+  /// Marginal ordinary rate at the given ordinary taxable income.
+  static double marginalOrdinaryRate(double taxableOrdinary, FilingStatus fs) {
+    final brackets = _Brackets.ordinary(fs);
+    for (final (cap, rate) in brackets) {
+      if (taxableOrdinary <= cap) return rate;
+    }
+    return brackets.last.$2;
+  }
+
+  /// Upper bound of the ordinary bracket containing [taxableOrdinary]
+  /// (infinity for the top bracket).
+  static double topOfOrdinaryBracket(double taxableOrdinary, FilingStatus fs) {
+    for (final (cap, _) in _Brackets.ordinary(fs)) {
+      if (taxableOrdinary < cap) return cap;
+    }
+    return double.infinity;
+  }
+
+  /// Top of the 0% long-term capital-gains bracket (taxable income).
+  static double ltcgZeroTop(FilingStatus fs) => _Brackets.capGainsTops(fs).$1;
+
   static double _bracketTax(double taxable, List<(double, double)> brackets) {
     if (taxable <= 0) return 0;
     double tax = 0;

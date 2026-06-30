@@ -7,6 +7,7 @@ import '../../models/enums.dart';
 import '../../models/expense.dart';
 import '../../models/income_source.dart';
 import '../../models/liability.dart';
+import '../../models/tax_profile.dart';
 import '../../services/engine/social_security.dart';
 import '../../state/plan_controller.dart';
 
@@ -108,6 +109,25 @@ void _upsertLiability(
   c.createLiability(
       Liability(name: name, type: type, balance: balance, monthlyPayment: pay, interestRate: rate));
 }
+
+/// A single money question that patches one field of the tax profile.
+IStep _taxMoneyStep(
+  String title,
+  String helper,
+  String label,
+  TaxProfile Function(TaxProfile t, double v) patch,
+) =>
+    IStep(
+      title: title,
+      helper: helper,
+      fields: [IField('amt', label, IKind.money)],
+      apply: (ref, v) {
+        final amt = (v['amt'] as double?) ?? 0;
+        if (amt <= 0) return;
+        final c = ref.read(planControllerProvider.notifier);
+        c.setTaxProfile(patch(ref.read(planControllerProvider).taxProfile, amt));
+      },
+    );
 
 // --- Interview definitions ---------------------------------------------------
 
@@ -281,6 +301,113 @@ Interview taxesInterview() => Interview(
             final c = ref.read(planControllerProvider.notifier);
             c.setProfile(ref.read(planControllerProvider).profile.copyWith(state: st));
           },
+        ),
+        // --- Figures from your most recent return (Form 1040) ---------------
+        _taxMoneyStep(
+          'Wages & salary',
+          'From your W-2 / Form 1040 line 1 — total wages, salaries and tips for '
+              'the year. Leave blank if retired.',
+          'Annual wages',
+          (t, v) => t.copyWith(wages: v),
+        ),
+        _taxMoneyStep(
+          'Taxable interest',
+          'Interest income from banks, CDs and bonds (1040 line 2b).',
+          'Taxable interest',
+          (t, v) => t.copyWith(interest: v),
+        ),
+        _taxMoneyStep(
+          'Ordinary dividends',
+          'Total ordinary dividends (1040 line 3b), including the qualified portion.',
+          'Ordinary dividends',
+          (t, v) => t.copyWith(ordinaryDividends: v),
+        ),
+        _taxMoneyStep(
+          'Qualified dividends',
+          'The qualified portion of those dividends (1040 line 3a) — taxed at the '
+              'lower capital-gains rate.',
+          'Qualified dividends',
+          (t, v) => t.copyWith(qualifiedDividends: v),
+        ),
+        _taxMoneyStep(
+          'Long-term capital gains',
+          'Net long-term gains from assets held over a year (Schedule D). Taxed at '
+              'preferential rates.',
+          'Long-term gains',
+          (t, v) => t.copyWith(longTermGains: v),
+        ),
+        _taxMoneyStep(
+          'Short-term capital gains',
+          'Net short-term gains from assets held a year or less (Schedule D). Taxed '
+              'as ordinary income.',
+          'Short-term gains',
+          (t, v) => t.copyWith(shortTermGains: v),
+        ),
+        _taxMoneyStep(
+          'Business / self-employment income',
+          'Net profit from a business or 1099 work (Schedule C / K-1).',
+          'Business income',
+          (t, v) => t.copyWith(businessIncome: v),
+        ),
+        _taxMoneyStep(
+          'IRA, pension & annuity distributions',
+          'Taxable retirement-account withdrawals, pensions and annuities '
+              '(1040 lines 4b + 5b).',
+          'Distributions',
+          (t, v) => t.copyWith(iraPensionDistributions: v),
+        ),
+        _taxMoneyStep(
+          'Social Security benefits',
+          'Total Social Security received for the year (1040 line 6a, the gross '
+              'amount).',
+          'Social Security',
+          (t, v) => t.copyWith(ssBenefits: v),
+        ),
+        _taxMoneyStep(
+          'Other income',
+          'Anything not captured above — rental, royalties, unemployment, etc.',
+          'Other income',
+          (t, v) => t.copyWith(otherIncome: v),
+        ),
+        _taxMoneyStep(
+          'Pre-tax contributions',
+          'Money you put into a 401(k), traditional IRA, or HSA before tax this '
+              'year — these reduce taxable income.',
+          'Pre-tax contributions',
+          (t, v) => t.copyWith(pretaxContributions: v),
+        ),
+        IStep(
+          title: 'Deduction method',
+          helper: 'Do you take the standard deduction or itemize? Itemizing helps '
+              'only when deductible expenses exceed the standard amount.',
+          fields: const [
+            IField('method', 'Deduction method', IKind.choice,
+                choices: ['Standard deduction', 'Itemize']),
+          ],
+          apply: (ref, v) {
+            final m = v['method'] as String?;
+            if (m == null) return;
+            final c = ref.read(planControllerProvider.notifier);
+            c.setTaxProfile(ref
+                .read(planControllerProvider)
+                .taxProfile
+                .copyWith(usesItemized: m == 'Itemize'));
+          },
+        ),
+        _taxMoneyStep(
+          'Itemized deductions',
+          'If you itemize, the total of mortgage interest, SALT (capped at '
+              '\$10,000), charity and medical. Skip if you take the standard '
+              'deduction.',
+          'Itemized total',
+          (t, v) => t.copyWith(itemizedDeductions: v),
+        ),
+        _taxMoneyStep(
+          'Total tax paid',
+          'Total federal tax from last year\'s return (1040 line 22), if you know '
+              'it — used to sanity-check the estimate.',
+          'Total tax',
+          (t, v) => t.copyWith(estTotalTax: v),
         ),
       ],
     );

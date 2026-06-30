@@ -11,6 +11,7 @@ import '../models/income_source.dart';
 import '../models/liability.dart';
 import '../models/plan_assumptions.dart';
 import '../models/profile.dart';
+import '../models/tax_profile.dart';
 import '../services/data_service.dart';
 import 'providers.dart';
 
@@ -61,6 +62,7 @@ class PlanState {
   final List<Expense> expenses;
   final List<Liability> liabilities;
   final List<Holding> holdings;
+  final TaxProfile taxProfile;
 
   const PlanState({
     required this.loaded,
@@ -71,6 +73,7 @@ class PlanState {
     required this.expenses,
     required this.liabilities,
     required this.holdings,
+    required this.taxProfile,
   });
 
   factory PlanState.initial(String uid) => PlanState(
@@ -82,6 +85,7 @@ class PlanState {
         expenses: const [],
         liabilities: const [],
         holdings: const [],
+        taxProfile: TaxProfile(userId: uid),
       );
 
   double get holdingsValue => holdings.fold(0.0, (s, h) => s + h.marketValue);
@@ -101,6 +105,7 @@ class PlanState {
     List<Expense>? expenses,
     List<Liability>? liabilities,
     List<Holding>? holdings,
+    TaxProfile? taxProfile,
   }) =>
       PlanState(
         loaded: loaded ?? this.loaded,
@@ -111,6 +116,7 @@ class PlanState {
         expenses: expenses ?? this.expenses,
         liabilities: liabilities ?? this.liabilities,
         holdings: holdings ?? this.holdings,
+        taxProfile: taxProfile ?? this.taxProfile,
       );
 }
 
@@ -133,6 +139,7 @@ class PlanController extends StateNotifier<PlanState> {
         _ds.listExpenses(),
         _ds.listLiabilities(),
         _ds.listHoldings(),
+        _ds.loadTaxProfile(),
       ]);
       state = PlanState(
         loaded: true,
@@ -143,6 +150,7 @@ class PlanController extends StateNotifier<PlanState> {
         expenses: r[4] as List<Expense>,
         liabilities: r[5] as List<Liability>,
         holdings: r[6] as List<Holding>,
+        taxProfile: r[7] as TaxProfile,
       );
     } catch (_) {
       state = state.copyWith(loaded: true);
@@ -191,6 +199,12 @@ class PlanController extends StateNotifier<PlanState> {
   void setAssumptions(PlanAssumptions a) {
     state = state.copyWith(assumptions: a);
     _debounce('assumptions', () => _ds.saveAssumptions(state.assumptions));
+  }
+
+  // --- Tax profile ---------------------------------------------------------
+  void setTaxProfile(TaxProfile t) {
+    state = state.copyWith(taxProfile: t);
+    _debounce('taxprofile', () => _ds.saveTaxProfile(state.taxProfile));
   }
 
   // --- Accounts ------------------------------------------------------------

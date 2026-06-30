@@ -7,6 +7,7 @@ import '../models/income_source.dart';
 import '../models/liability.dart';
 import '../models/plan_assumptions.dart';
 import '../models/profile.dart';
+import '../models/tax_profile.dart';
 
 /// CRUD over PostgREST. Every call is implicitly scoped to the signed-in user
 /// by Row Level Security (`user_id = auth.uid()`). Insert helpers return the new
@@ -124,6 +125,20 @@ class DataService {
       _client.from('holdings').update(h.toInsert(_uid)).eq('id', h.id!);
 
   Future<void> deleteHolding(String id) => _client.from('holdings').delete().eq('id', id);
+
+  // --- Tax profile ---------------------------------------------------------
+  Future<TaxProfile> loadTaxProfile() async {
+    try {
+      final row =
+          await _client.from('tax_profile').select().eq('user_id', _uid).maybeSingle();
+      return row == null ? TaxProfile(userId: _uid) : TaxProfile.fromJson(row);
+    } catch (_) {
+      return TaxProfile(userId: _uid); // table may not exist yet
+    }
+  }
+
+  Future<void> saveTaxProfile(TaxProfile t) =>
+      _client.from('tax_profile').upsert(t.toUpsert());
 
   /// Fetches recent prices for [symbols] via the `quotes` edge function.
   Future<Map<String, double>> fetchQuotes(List<String> symbols) async {
