@@ -7,6 +7,7 @@ import '../models/income_source.dart';
 import '../models/liability.dart';
 import '../models/plan_assumptions.dart';
 import '../models/profile.dart';
+import '../models/quote_result.dart';
 import '../models/tax_profile.dart';
 
 /// CRUD over PostgREST. Every call is implicitly scoped to the signed-in user
@@ -140,18 +141,60 @@ class DataService {
   Future<void> saveTaxProfile(TaxProfile t) =>
       _client.from('tax_profile').upsert(t.toUpsert());
 
-  /// Fetches recent prices for [symbols] via the `quotes` edge function.
-  Future<Map<String, double>> fetchQuotes(List<String> symbols) async {
-    if (symbols.isEmpty) return {};
-    final res = await _client.functions.invoke('quotes', body: {'symbols': symbols});
-    final data = res.data;
-    final out = <String, double>{};
-    if (data is Map) {
+  /// Fetches recent prices for [symbols] via the `quotes` edge function and
+  /// returns rich diagnostics (per-symbol detail, status, any error) so the UI
+  /// can show what the API call actually did.
+  Future<QuoteResult> fetchQuotes(List<String> symbols) async {
+    if (symbols.isEmpty) return QuoteResult(requested: symbols);
+    try {
+      final res = await _client.functions.invoke('quotes', body: {'symbols': symbols});
+      return _parseQuotes(res.data, res.status, symbols);
+    } on FunctionException catch (e) {
+      final parsed = _parseQuotes(e.details, e.status, symbols);
+      return QuoteResult(
+        prices: parsed.prices,
+        details: parsed.details,
+        requested: symbols,
+        httpStatus: e.status,
+        error: parsed.error ?? 'Quotes function returned HTTP ${e.status}.',
+      );
+    } catch (e) {
+      return QuoteResult(requested: symbols, error: e.toString());
+    }
+  }
+
+  QuoteResult _parseQuotes(dynamic data, int? status, List<String> requested) {
+    if (data is! Map) {
+      return QuoteResult(requested: requested, httpStatus: status, error: 'Unexpected response.');
+    }
+    final prices = <String, double>{};
+    final details = <QuoteDetail>[];
+    final rawPrices = data['prices'];
+    if (rawPrices is Map) {
+      rawPrices.forEach((k, v) {
+        final p = (v is num) ? v.toDouble() : double.tryParse('$v');
+        if (p != null && p > 0) prices[k.toString().toUpperCase()] = p;
+      });
+    } else {
+      // Legacy flat shape: { "AAPL": 192.34 } (excluding an 'error' key).
       data.forEach((k, v) {
-        final price = (v is num) ? v.toDouble() : double.tryParse('$v');
-        if (price != null && price > 0) out[k.toString().toUpperCase()] = price;
+        if (k == 'error') return;
+        final p = (v is num) ? v.toDouble() : double.tryParse('$v');
+        if (p != null && p > 0) prices[k.toString().toUpperCase()] = p;
       });
     }
-    return out;
+    final rawDetails = data['details'];
+    if (rawDetails is List) {
+      for (final d in rawDetails) {
+        if (d is Map) details.add(QuoteDetail.fromJson(d.cast<String, dynamic>()));
+      }
+    }
+    return QuoteResult(
+      prices: prices,
+      details: details,
+      requested: requested,
+      httpStatus: status,
+      error: data['error']?.toString(),
+    );
   }
 }
