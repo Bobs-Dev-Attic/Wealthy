@@ -1,7 +1,9 @@
 // Wealthy price-quote proxy.
-// Fetches recent (end-of-day / delayed) prices from Stooq, a free no-API-key
-// source, server-side so the browser never hits CORS. Authenticated users only.
-//   POST { symbols: ["AAPL", "VTI", "VTSAX"] }  ->  { "AAPL": 192.34, ... }
+// Fetches recent (delayed / end-of-day) prices server-side so the browser never
+// hits CORS. Tries Yahoo Finance first (open v8 chart endpoint, no API key) and
+// falls back to Stooq per symbol. Authenticated users only.
+//   POST { symbols: ["AAPL", "VTI", "VTSAX"] }
+//   ->   { prices: {"AAPL": 192.34}, details: [...], requested: [...] }
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -16,6 +18,61 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
+interface Detail {
+  symbol: string;
+  price: number | null;
+  source: string | null;
+  status: string;
+}
+
+// Yahoo Finance v8 chart endpoint — no API key, works server-side.
+async function yahoo(sym: string): Promise<number | null> {
+  const url =
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=1d&interval=1d`;
+  const res = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; wealthy/1.0)" },
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const meta = data?.chart?.result?.[0]?.meta;
+  const p = meta?.regularMarketPrice ?? meta?.previousClose ?? meta?.chartPreviousClose;
+  return typeof p === "number" && Number.isFinite(p) && p > 0 ? p : null;
+}
+
+// Stooq CSV fallback. US tickers need a `.us` suffix.
+async function stooq(sym: string): Promise<number | null> {
+  const s = sym.includes(".") ? sym.toLowerCase() : `${sym.toLowerCase()}.us`;
+  const url = `https://stooq.com/q/l/?s=${encodeURIComponent(s)}&f=sd2t2ohlcv&h&e=csv`;
+  const res = await fetch(url, { headers: { "User-Agent": "wealthy/1.0" } });
+  if (!res.ok) return null;
+  const text = await res.text();
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return null;
+  const cols = lines[1].split(",");
+  if (cols.length < 7) return null;
+  const close = parseFloat(cols[6]);
+  return Number.isFinite(close) ? close : null;
+}
+
+async function lookup(sym: string): Promise<Detail> {
+  try {
+    let price = await yahoo(sym);
+    let source: string | null = price != null ? "yahoo" : null;
+    if (price == null) {
+      price = await stooq(sym);
+      if (price != null) source = "stooq";
+    }
+    return { symbol: sym, price, source, status: price != null ? "ok" : "not found" };
+  } catch (e) {
+    return {
+      symbol: sym,
+      price: null,
+      source: null,
+      status: "error: " + (e instanceof Error ? e.message : String(e)),
+    };
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
@@ -25,30 +82,14 @@ Deno.serve(async (req: Request) => {
       .map((s) => String(s).trim().toUpperCase())
       .filter((s) => s.length > 0 && s.length <= 12)
       .slice(0, 50);
-    if (symbols.length === 0) return json({});
+    if (symbols.length === 0) return json({ prices: {}, details: [], requested: [] });
 
-    // Stooq wants lowercase, and US tickers need a `.us` suffix.
-    const stooq = symbols
-      .map((s) => (s.includes(".") ? s.toLowerCase() : `${s.toLowerCase()}.us`))
-      .join(",");
-    const url =
-      `https://stooq.com/q/l/?s=${encodeURIComponent(stooq)}&f=sd2t2ohlcv&h&e=csv`;
-
-    const res = await fetch(url, { headers: { "User-Agent": "wealthy/1.0" } });
-    if (!res.ok) return json({ error: `quote source ${res.status}` }, 502);
-    const text = await res.text();
-
-    // Header: Symbol,Date,Time,Open,High,Low,Close,Volume
-    const out: Record<string, number | null> = {};
-    const lines = text.trim().split(/\r?\n/);
-    for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(",");
-      if (cols.length < 7) continue;
-      const sym = (cols[0] || "").replace(/\.[A-Za-z]+$/, "").toUpperCase();
-      const close = parseFloat(cols[6]);
-      out[sym] = Number.isFinite(close) ? close : null;
+    const details = await Promise.all(symbols.map(lookup));
+    const prices: Record<string, number> = {};
+    for (const d of details) {
+      if (d.price != null) prices[d.symbol] = d.price;
     }
-    return json(out);
+    return json({ prices, details, requested: symbols });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : String(e) }, 400);
   }

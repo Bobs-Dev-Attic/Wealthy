@@ -5,6 +5,7 @@ import '../../core/formatters.dart';
 import '../../models/enums.dart';
 import '../../models/holding.dart';
 import '../../models/liability.dart';
+import '../../models/quote_result.dart';
 import '../../models/tax_profile.dart';
 import '../../state/plan_controller.dart';
 import '../../widgets/editor_fields.dart';
@@ -310,8 +311,6 @@ class _HoldingsSection extends ConsumerStatefulWidget {
 }
 
 class _HoldingsSectionState extends ConsumerState<_HoldingsSection> {
-  bool _refreshing = false;
-
   static String _shares(double n) =>
       n == n.roundToDouble() ? n.toInt().toString() : n.toString();
 
@@ -341,17 +340,14 @@ class _HoldingsSectionState extends ConsumerState<_HoldingsSection> {
               label: const Text('Add holding'),
             ),
             OutlinedButton.icon(
-              onPressed: _refreshing
+              onPressed: s.holdings.every((h) => h.symbol.trim().isEmpty)
                   ? null
-                  : () async {
-                      setState(() => _refreshing = true);
-                      await c.refreshPrices();
-                      if (mounted) setState(() => _refreshing = false);
-                    },
-              icon: _refreshing
-                  ? const SizedBox(
-                      width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.refresh, size: 18),
+                  : () => showDialog(
+                        context: context,
+                        barrierDismissible: false,
+                        builder: (_) => const PriceRefreshDialog(),
+                      ),
+              icon: const Icon(Icons.refresh, size: 18),
               label: const Text('Refresh prices'),
             ),
           ],
@@ -421,9 +417,156 @@ class _HoldingsSectionState extends ConsumerState<_HoldingsSection> {
             ],
           ),
         const SizedBox(height: 8),
-        Text('Prices via Stooq — delayed / end-of-day, for estimates only.',
+        Text('Prices via Yahoo Finance / Stooq — delayed / end-of-day, for estimates only.',
             style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
       ],
+    );
+  }
+}
+
+/// Drives a price refresh and shows a live diagnostic of the API call: the
+/// symbols requested, an in-progress spinner, then per-symbol results (price +
+/// source, or why it failed) and any error returned by the quotes function.
+class PriceRefreshDialog extends ConsumerStatefulWidget {
+  const PriceRefreshDialog({super.key});
+  @override
+  ConsumerState<PriceRefreshDialog> createState() => _PriceRefreshDialogState();
+}
+
+class _PriceRefreshDialogState extends ConsumerState<PriceRefreshDialog> {
+  bool _loading = true;
+  QuoteResult? _result;
+  late List<String> _requested;
+
+  @override
+  void initState() {
+    super.initState();
+    final s = ref.read(planControllerProvider);
+    _requested = s.holdings
+        .map((h) => h.symbol.trim().toUpperCase())
+        .where((x) => x.isNotEmpty)
+        .toSet()
+        .toList();
+    _run();
+  }
+
+  Future<void> _run() async {
+    setState(() => _loading = true);
+    final r = await ref.read(planControllerProvider.notifier).refreshPrices();
+    if (mounted) {
+      setState(() {
+        _result = r;
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final r = _result;
+    return AlertDialog(
+      title: Row(children: [
+        const Icon(Icons.refresh, size: 20),
+        const SizedBox(width: 8),
+        const Text('Refresh prices'),
+      ]),
+      content: SizedBox(
+        width: 460,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _kv('Endpoint', 'POST /functions/v1/quotes'),
+              _kv('Source', 'Yahoo Finance, falling back to Stooq'),
+              _kv('Symbols (${_requested.length})',
+                  _requested.isEmpty ? '—' : _requested.join(', ')),
+              if (r != null && r.httpStatus != null) _kv('HTTP status', '${r.httpStatus}'),
+              const Divider(height: 22),
+              if (_loading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Row(children: [
+                    SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                    SizedBox(width: 12),
+                    Text('Calling quotes function…'),
+                  ]),
+                )
+              else if (r != null) ...[
+                if (r.error != null)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: cs.errorContainer,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Icon(Icons.error_outline, size: 18, color: cs.onErrorContainer),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(r.error!,
+                            style: TextStyle(color: cs.onErrorContainer, fontSize: 12.5)),
+                      ),
+                    ]),
+                  ),
+                if (r.error != null) const SizedBox(height: 10),
+                Text('${r.pricedCount} of ${_requested.length} priced',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                if (r.details.isNotEmpty)
+                  for (final d in r.details) _detailRow(d, cs)
+                else if (r.error == null)
+                  Text('No per-symbol detail returned.',
+                      style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        if (!_loading)
+          TextButton.icon(
+              onPressed: _run, icon: const Icon(Icons.refresh, size: 16), label: const Text('Retry')),
+        FilledButton(
+          onPressed: _loading ? null : () => Navigator.of(context).pop(),
+          child: const Text('Done'),
+        ),
+      ],
+    );
+  }
+
+  Widget _kv(String k, String v) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(
+              width: 120,
+              child: Text(k,
+                  style: TextStyle(
+                      fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant))),
+          Expanded(child: Text(v, style: const TextStyle(fontSize: 12.5))),
+        ]),
+      );
+
+  Widget _detailRow(QuoteDetail d, ColorScheme cs) {
+    final ok = d.ok;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(children: [
+        Icon(ok ? Icons.check_circle_outline : Icons.cancel_outlined,
+            size: 16, color: ok ? Colors.green : cs.error),
+        const SizedBox(width: 8),
+        SizedBox(width: 70, child: Text(d.symbol, style: const TextStyle(fontWeight: FontWeight.bold))),
+        Expanded(
+          child: Text(
+            ok
+                ? '${moneyCents(d.price!)}  ·  ${d.source ?? ''}'
+                : d.status,
+            style: TextStyle(fontSize: 12.5, color: ok ? null : cs.onSurfaceVariant),
+          ),
+        ),
+      ]),
     );
   }
 }

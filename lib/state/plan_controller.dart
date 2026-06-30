@@ -11,6 +11,7 @@ import '../models/income_source.dart';
 import '../models/liability.dart';
 import '../models/plan_assumptions.dart';
 import '../models/profile.dart';
+import '../models/quote_result.dart';
 import '../models/tax_profile.dart';
 import '../services/data_service.dart';
 import 'providers.dart';
@@ -344,30 +345,36 @@ class PlanController extends StateNotifier<PlanState> {
     if (h.id != null) await _trackVoid(() => _ds.deleteHolding(h.id!));
   }
 
-  /// Fetches recent prices for all holdings and stores them.
-  Future<void> refreshPrices() async {
+  /// Fetches recent prices for all holdings, stores them, and returns the call
+  /// diagnostics so the UI can show what happened.
+  Future<QuoteResult> refreshPrices() async {
     final symbols =
         state.holdings.map((h) => h.symbol.trim().toUpperCase()).where((s) => s.isNotEmpty).toSet();
-    if (symbols.isEmpty) return;
+    if (symbols.isEmpty) return const QuoteResult();
     _save.begin();
     try {
-      final quotes = await _ds.fetchQuotes(symbols.toList());
-      final now = DateTime.now();
-      final updated = [
-        for (final h in state.holdings)
-          quotes[h.symbol.toUpperCase()] != null
-              ? h.copyWith(lastPrice: quotes[h.symbol.toUpperCase()], lastPriceAt: now)
-              : h,
-      ];
-      state = state.copyWith(holdings: updated);
-      for (final h in updated) {
-        if (h.id != null && quotes[h.symbol.toUpperCase()] != null) {
-          try {
-            await _ds.updateHolding(h);
-          } catch (_) {}
+      final result = await _ds.fetchQuotes(symbols.toList());
+      final quotes = result.prices;
+      if (quotes.isNotEmpty) {
+        final now = DateTime.now();
+        final updated = [
+          for (final h in state.holdings)
+            quotes[h.symbol.toUpperCase()] != null
+                ? h.copyWith(lastPrice: quotes[h.symbol.toUpperCase()], lastPriceAt: now)
+                : h,
+        ];
+        state = state.copyWith(holdings: updated);
+        for (final h in updated) {
+          if (h.id != null && quotes[h.symbol.toUpperCase()] != null) {
+            try {
+              await _ds.updateHolding(h);
+            } catch (_) {}
+          }
         }
       }
-    } catch (_) {
+      return result;
+    } catch (e) {
+      return QuoteResult(error: e.toString());
     } finally {
       _save.end();
     }
