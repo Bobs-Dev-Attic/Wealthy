@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/formatters.dart';
 import '../../models/enums.dart';
+import '../../models/liability.dart';
 import '../../services/engine/tax_optimization.dart';
 import '../../state/plan_controller.dart';
 import '../../state/projection_controller.dart';
@@ -345,6 +346,282 @@ class HealthcareView extends ConsumerWidget {
       ],
     );
   }
+}
+
+/// Debt: an amortization schedule for each liability with sliders to adjust the
+/// monthly payment and interest rate. Changes flow back into the plan so every
+/// other result (net worth, cash flow) updates in real time.
+class DebtView extends ConsumerWidget {
+  const DebtView({super.key});
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final liabilities = ref.watch(planControllerProvider.select((s) => s.liabilities));
+    final c = ref.read(planControllerProvider.notifier);
+    if (liabilities.isEmpty) {
+      return const _Empty('Add a liability to see its amortization schedule.');
+    }
+    final totalBalance = liabilities.fold(0.0, (s, l) => s + l.balance);
+    final totalMonthly = liabilities.fold(0.0, (s, l) => s + l.monthlyPayment);
+    return ListView(
+      padding: _pad,
+      children: [
+        Row(children: [
+          Expanded(child: StatTile(label: 'Total debt', value: money(totalBalance))),
+          const SizedBox(width: 8),
+          Expanded(child: StatTile(label: 'Monthly payments', value: money(totalMonthly))),
+        ]),
+        const SizedBox(height: 4),
+        for (final l in liabilities)
+          _DebtCard(key: ValueKey(l.id), liability: l, onChanged: c.updateLiability),
+        const _Disclaimer2(
+            'Estimates assume a fixed rate and constant payment. Adjusting a slider updates your plan.'),
+      ],
+    );
+  }
+}
+
+class _DebtCard extends StatelessWidget {
+  const _DebtCard({super.key, required this.liability, required this.onChanged});
+  final Liability liability;
+  final ValueChanged<Liability> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = liability;
+    final cs = Theme.of(context).colorScheme;
+    final sched = _amortize(l.balance, l.interestRate, l.monthlyPayment);
+    final monthlyInterest = l.balance * l.interestRate / 12;
+
+    // Slider bounds, kept wide enough to always contain the current value.
+    final payMax = [l.monthlyPayment * 2, l.balance / 12, monthlyInterest * 3, 100.0]
+        .reduce(math.max)
+        .ceilToDouble();
+    final rateMax = math.max(0.30, l.interestRate);
+
+    return Card(
+      margin: const EdgeInsets.only(top: 8, bottom: 4),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(_debtIcon(l.type), size: 18, color: cs.onSurfaceVariant),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(l.name.isEmpty ? l.type.label : l.name,
+                    style: Theme.of(context).textTheme.titleSmall),
+              ),
+              Text(money(l.balance), style: const TextStyle(fontWeight: FontWeight.bold)),
+            ]),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(
+                  child: StatTile(
+                      label: 'Payoff time',
+                      value: sched.amortizes ? _durationLabel(sched.months) : 'Never')),
+              const SizedBox(width: 8),
+              Expanded(
+                  child: StatTile(
+                      label: 'Total interest',
+                      value: sched.amortizes ? money(sched.totalInterest) : '—')),
+            ]),
+            if (!sched.amortizes)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Row(children: [
+                  Icon(Icons.warning_amber_rounded, size: 16, color: cs.error),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Payment of ${money(l.monthlyPayment)} doesn\'t cover ${money(monthlyInterest)}/mo '
+                      'in interest — the balance never goes down. Raise the payment below.',
+                      style: TextStyle(fontSize: 12, color: cs.error),
+                    ),
+                  ),
+                ]),
+              ),
+            const SizedBox(height: 8),
+            _SliderRow(
+              label: 'Monthly payment',
+              valueLabel: money(l.monthlyPayment),
+              value: l.monthlyPayment.clamp(0, payMax).toDouble(),
+              min: 0,
+              max: payMax,
+              divisions: 200,
+              onChanged: (v) => onChanged(l.copyWith(monthlyPayment: v.roundToDouble())),
+            ),
+            _SliderRow(
+              label: 'Interest rate',
+              valueLabel: percent(l.interestRate),
+              value: l.interestRate.clamp(0, rateMax).toDouble(),
+              min: 0,
+              max: rateMax,
+              divisions: (rateMax / 0.0025).round(),
+              onChanged: (v) => onChanged(l.copyWith(interestRate: v)),
+            ),
+            if (sched.amortizes && sched.years.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text('Amortization (per year)', style: Theme.of(context).textTheme.labelLarge),
+              const SizedBox(height: 4),
+              _AmortTable(years: sched.years),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SliderRow extends StatelessWidget {
+  const _SliderRow({
+    required this.label,
+    required this.valueLabel,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.divisions,
+    required this.onChanged,
+  });
+  final String label;
+  final String valueLabel;
+  final double value, min, max;
+  final int divisions;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          Expanded(
+              child: Text(label,
+                  style: TextStyle(
+                      fontSize: 12.5, color: Theme.of(context).colorScheme.onSurfaceVariant))),
+          Text(valueLabel, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+        ]),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            trackHeight: 3,
+            overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+          ),
+          child: Slider(
+            value: value,
+            min: min,
+            max: max <= min ? min + 1 : max,
+            divisions: divisions < 1 ? 1 : divisions,
+            label: valueLabel,
+            onChanged: onChanged,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AmortTable extends StatelessWidget {
+  const _AmortTable({required this.years});
+  final List<_DebtYear> years;
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final head = TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant);
+    const cell = TextStyle(fontSize: 12);
+    Widget row(String a, String b, String c, String d, {TextStyle? style, Color? bg}) => Container(
+          color: bg,
+          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+          child: Row(children: [
+            SizedBox(width: 38, child: Text(a, style: style ?? cell)),
+            Expanded(child: Text(b, style: style ?? cell, textAlign: TextAlign.right)),
+            Expanded(child: Text(c, style: style ?? cell, textAlign: TextAlign.right)),
+            Expanded(child: Text(d, style: style ?? cell, textAlign: TextAlign.right)),
+          ]),
+        );
+    return Column(
+      children: [
+        row('Yr', 'Principal', 'Interest', 'Balance', style: head),
+        for (final y in years)
+          row(
+            '${y.year}',
+            money(y.principal),
+            money(y.interest),
+            money(y.endingBalance),
+            bg: y.year.isEven ? cs.surfaceContainerHighest.withValues(alpha: 0.3) : null,
+          ),
+      ],
+    );
+  }
+}
+
+class _DebtYear {
+  final int year;
+  final double principal;
+  final double interest;
+  final double endingBalance;
+  const _DebtYear(this.year, this.principal, this.interest, this.endingBalance);
+}
+
+/// Computes a yearly amortization schedule. [amortizes] is false when the
+/// payment never covers the monthly interest (balance would never reach zero).
+({bool amortizes, int months, double totalInterest, List<_DebtYear> years}) _amortize(
+    double balance, double annualRate, double payment) {
+  if (balance <= 0) {
+    return (amortizes: true, months: 0, totalInterest: 0, years: const []);
+  }
+  final r = annualRate / 12;
+  if (payment <= balance * r + 1e-9) {
+    return (amortizes: false, months: 0, totalInterest: 0, years: const []);
+  }
+  const maxMonths = 50 * 12;
+  double bal = balance;
+  double totalInterest = 0;
+  int months = 0;
+  final years = <_DebtYear>[];
+  while (bal > 0 && months < maxMonths) {
+    double yearPrincipal = 0, yearInterest = 0;
+    for (var m = 0; m < 12 && bal > 0 && months < maxMonths; m++) {
+      final interest = bal * r;
+      var principal = payment - interest;
+      if (principal <= 0) break;
+      if (principal > bal) principal = bal;
+      bal -= principal;
+      yearPrincipal += principal;
+      yearInterest += interest;
+      totalInterest += interest;
+      months++;
+    }
+    years.add(_DebtYear(years.length + 1, yearPrincipal, yearInterest, bal < 0.01 ? 0 : bal));
+    if (bal < 0.01) break;
+  }
+  return (amortizes: true, months: months, totalInterest: totalInterest, years: years);
+}
+
+String _durationLabel(int months) {
+  final y = months ~/ 12;
+  final m = months % 12;
+  if (y == 0) return '$m mo';
+  if (m == 0) return '$y yr';
+  return '$y yr $m mo';
+}
+
+IconData _debtIcon(LiabilityType t) => switch (t) {
+      LiabilityType.mortgage => Icons.house_outlined,
+      LiabilityType.auto => Icons.directions_car_outlined,
+      LiabilityType.student => Icons.school_outlined,
+      LiabilityType.creditCard => Icons.credit_card,
+      LiabilityType.loan => Icons.request_quote_outlined,
+      LiabilityType.other => Icons.account_balance_outlined,
+    };
+
+class _Disclaimer2 extends StatelessWidget {
+  const _Disclaimer2(this.text);
+  final String text;
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Text(text, style: Theme.of(context).textTheme.bodySmall),
+      );
 }
 
 // --- shared ----------------------------------------------------------------

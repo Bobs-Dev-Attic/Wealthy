@@ -25,6 +25,7 @@ class _PlannerScreenState extends ConsumerState<PlannerScreen> {
   @override
   Widget build(BuildContext context) {
     final loaded = ref.watch(planControllerProvider.select((s) => s.loaded));
+    final hasDebt = ref.watch(planControllerProvider.select((s) => s.liabilities.isNotEmpty));
 
     Future<void> logout() async {
       await ref.read(authServiceProvider).signOut();
@@ -92,19 +93,29 @@ class _PlannerScreenState extends ConsumerState<PlannerScreen> {
                   });
                 },
               ),
-              const Expanded(
+              Expanded(
                 child: _Half(
                   label: 'RESULTS',
                   icon: Icons.insights,
-                  tabs: ['Summary', 'Net worth', 'Retirement', 'Cash flow', 'Taxes', 'RMD', 'Healthcare'],
+                  tabs: [
+                    'Summary',
+                    'Net worth',
+                    'Retirement',
+                    'Cash flow',
+                    'Taxes',
+                    'RMD',
+                    'Healthcare',
+                    if (hasDebt) 'Debt',
+                  ],
                   views: [
-                    SummaryView(),
-                    NetWorthView(),
-                    RetirementView(),
-                    CashFlowView(),
-                    TaxesView(),
-                    RmdView(),
-                    HealthcareView(),
+                    const SummaryView(),
+                    const NetWorthView(),
+                    const RetirementView(),
+                    const CashFlowView(),
+                    const TaxesView(),
+                    const RmdView(),
+                    const HealthcareView(),
+                    if (hasDebt) const DebtView(),
                   ],
                 ),
               ),
