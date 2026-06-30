@@ -709,10 +709,18 @@ class LiabilitiesTab extends ConsumerWidget {
       itemCount: s.liabilities.length,
       itemBuilder: (i) {
         final l = s.liabilities[i];
+        final isMortgage = l.type == LiabilityType.mortgage;
         return _RowCard(
           key: ValueKey(l.id ?? i),
           onRemove: () => c.removeLiability(l),
           children: [
+            TextFormField(
+              initialValue: l.name,
+              decoration: const InputDecoration(
+                  labelText: 'Name', hintText: 'e.g. Primary home, Civic loan'),
+              onChanged: (v) => c.updateLiability(l.copyWith(name: v)),
+            ),
+            _gap,
             Row(children: [
               Expanded(
                 flex: 2,
@@ -754,6 +762,39 @@ class LiabilitiesTab extends ConsumerWidget {
                 ),
               ),
             ]),
+            if (isMortgage) ...[
+              _gap,
+              Row(children: [
+                Expanded(
+                  flex: 2,
+                  child: DropdownButtonFormField<MortgageKind>(
+                    value: l.mortgageKind,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Mortgage type'),
+                    hint: const Text('Select'),
+                    items: [
+                      for (final k in MortgageKind.values)
+                        DropdownMenuItem(value: k, child: Text(k.label, overflow: TextOverflow.ellipsis)),
+                    ],
+                    onChanged: (k) => c.updateLiability(l.copyWith(mortgageKind: k)),
+                  ),
+                ),
+                _hgap,
+                Expanded(
+                  child: IntField(
+                    label: 'Term (yrs)',
+                    value: l.termYears,
+                    onChanged: (v) => c.updateLiability(l.copyWith(termYears: v)),
+                  ),
+                ),
+              ]),
+              _gap,
+              MoneyField(
+                label: 'Extra monthly payment (optional)',
+                value: l.extraMonthlyPayment,
+                onChanged: (v) => c.updateLiability(l.copyWith(extraMonthlyPayment: v)),
+              ),
+            ],
           ],
         );
       },
