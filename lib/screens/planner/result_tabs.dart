@@ -380,16 +380,24 @@ class DebtView extends ConsumerWidget {
   }
 }
 
-class _DebtCard extends StatelessWidget {
+class _DebtCard extends StatefulWidget {
   const _DebtCard({super.key, required this.liability, required this.onChanged});
   final Liability liability;
   final ValueChanged<Liability> onChanged;
+  @override
+  State<_DebtCard> createState() => _DebtCardState();
+}
+
+class _DebtCardState extends State<_DebtCard> {
+  int _groupYears = 1;
 
   @override
   Widget build(BuildContext context) {
-    final l = liability;
+    final l = widget.liability;
+    final onChanged = widget.onChanged;
     final cs = Theme.of(context).colorScheme;
-    final sched = _amortize(l.balance, l.interestRate, l.monthlyPayment);
+    final pay = l.totalMonthlyPayment; // includes any extra payment
+    final sched = _amortize(l.balance, l.interestRate, pay);
     final monthlyInterest = l.balance * l.interestRate / 12;
 
     // Slider bounds, kept wide enough to always contain the current value.
@@ -397,6 +405,12 @@ class _DebtCard extends StatelessWidget {
         .reduce(math.max)
         .ceilToDouble();
     final rateMax = math.max(0.30, l.interestRate);
+
+    final subtitle = <String>[
+      if (l.type == LiabilityType.mortgage && l.mortgageKind != null) l.mortgageKind!.label,
+      if (l.termYears > 0) '${l.termYears}-yr term',
+      if (l.extraMonthlyPayment > 0) '+${money(l.extraMonthlyPayment)}/mo extra',
+    ].join('  ·  ');
 
     return Card(
       margin: const EdgeInsets.only(top: 8, bottom: 4),
@@ -409,8 +423,16 @@ class _DebtCard extends StatelessWidget {
               Icon(_debtIcon(l.type), size: 18, color: cs.onSurfaceVariant),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(l.name.isEmpty ? l.type.label : l.name,
-                    style: Theme.of(context).textTheme.titleSmall),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(l.name.isEmpty ? l.type.label : l.name,
+                        style: Theme.of(context).textTheme.titleSmall),
+                    if (subtitle.isNotEmpty)
+                      Text(subtitle, style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant)),
+                  ],
+                ),
               ),
               Text(money(l.balance), style: const TextStyle(fontWeight: FontWeight.bold)),
             ]),
@@ -434,7 +456,7 @@ class _DebtCard extends StatelessWidget {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      'Payment of ${money(l.monthlyPayment)} doesn\'t cover ${money(monthlyInterest)}/mo '
+                      'Payment of ${money(pay)} doesn\'t cover ${money(monthlyInterest)}/mo '
                       'in interest — the balance never goes down. Raise the payment below.',
                       style: TextStyle(fontSize: 12, color: cs.error),
                     ),
@@ -462,9 +484,26 @@ class _DebtCard extends StatelessWidget {
             ),
             if (sched.amortizes && sched.years.isNotEmpty) ...[
               const SizedBox(height: 6),
-              Text('Amortization (per year)', style: Theme.of(context).textTheme.labelLarge),
+              Row(children: [
+                Expanded(
+                  child: Text('Amortization', style: Theme.of(context).textTheme.labelLarge),
+                ),
+                SegmentedButton<int>(
+                  style: ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                    textStyle: WidgetStatePropertyAll(TextStyle(fontSize: 11.5)),
+                  ),
+                  segments: const [
+                    ButtonSegment(value: 1, label: Text('Yearly')),
+                    ButtonSegment(value: 5, label: Text('5-yr')),
+                  ],
+                  selected: {_groupYears},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (s) => setState(() => _groupYears = s.first),
+                ),
+              ]),
               const SizedBox(height: 4),
-              _AmortTable(years: sched.years),
+              _AmortTable(years: sched.years, groupYears: _groupYears, termYears: l.termYears),
             ],
           ],
         ),
@@ -521,18 +560,38 @@ class _SliderRow extends StatelessWidget {
 }
 
 class _AmortTable extends StatelessWidget {
-  const _AmortTable({required this.years});
+  const _AmortTable({required this.years, this.groupYears = 1, this.termYears = 0});
   final List<_DebtYear> years;
+  final int groupYears;
+  final int termYears;
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final head = TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant);
     const cell = TextStyle(fontSize: 12);
+
+    // Optionally bound the schedule to the loan term, then group rows.
+    var rows = termYears > 0 ? years.where((y) => y.year <= termYears).toList() : years;
+    final groups = <({String label, double principal, double interest, double balance})>[];
+    final step = groupYears < 1 ? 1 : groupYears;
+    for (var i = 0; i < rows.length; i += step) {
+      final chunk = rows.sublist(i, math.min(i + step, rows.length));
+      groups.add((
+        label: chunk.length == 1
+            ? '${chunk.first.year}'
+            : '${chunk.first.year}–${chunk.last.year}',
+        principal: chunk.fold(0.0, (s, y) => s + y.principal),
+        interest: chunk.fold(0.0, (s, y) => s + y.interest),
+        balance: chunk.last.endingBalance,
+      ));
+    }
+
     Widget row(String a, String b, String c, String d, {TextStyle? style, Color? bg}) => Container(
           color: bg,
           padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
           child: Row(children: [
-            SizedBox(width: 38, child: Text(a, style: style ?? cell)),
+            SizedBox(width: 52, child: Text(a, style: style ?? cell)),
             Expanded(child: Text(b, style: style ?? cell, textAlign: TextAlign.right)),
             Expanded(child: Text(c, style: style ?? cell, textAlign: TextAlign.right)),
             Expanded(child: Text(d, style: style ?? cell, textAlign: TextAlign.right)),
@@ -540,14 +599,14 @@ class _AmortTable extends StatelessWidget {
         );
     return Column(
       children: [
-        row('Yr', 'Principal', 'Interest', 'Balance', style: head),
-        for (final y in years)
+        row(groupYears > 1 ? 'Years' : 'Yr', 'Principal', 'Interest', 'Balance', style: head),
+        for (var i = 0; i < groups.length; i++)
           row(
-            '${y.year}',
-            money(y.principal),
-            money(y.interest),
-            money(y.endingBalance),
-            bg: y.year.isEven ? cs.surfaceContainerHighest.withValues(alpha: 0.3) : null,
+            groups[i].label,
+            money(groups[i].principal),
+            money(groups[i].interest),
+            money(groups[i].balance),
+            bg: i.isOdd ? cs.surfaceContainerHighest.withValues(alpha: 0.3) : null,
           ),
       ],
     );
