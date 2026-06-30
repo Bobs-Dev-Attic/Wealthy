@@ -7,7 +7,7 @@ class Holding {
   final String symbol;
   final String? name;
   final double shares;
-  final AccountType accountType; // taxable / traditional / roth / hsa
+  final AccountType accountType; // taxable / 401(k) / IRA / Roth / HSA
   final double costBasis;
   final double? lastPrice;
   final DateTime? lastPriceAt;
@@ -28,8 +28,10 @@ class Holding {
   /// Account types a holding can sit in (cash is excluded).
   static const investable = [
     AccountType.taxable,
-    AccountType.traditional,
-    AccountType.roth,
+    AccountType.traditional401k,
+    AccountType.traditionalIra,
+    AccountType.roth401k,
+    AccountType.rothIra,
     AccountType.hsa,
   ];
 

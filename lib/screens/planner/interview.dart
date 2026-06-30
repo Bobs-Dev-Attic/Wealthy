@@ -236,9 +236,10 @@ Interview investmentsInterview() => Interview(
       steps: [
         _accountStep('Checking & savings', AccountType.cash),
         _accountStep('Brokerage / taxable', AccountType.taxable),
-        _accountStep('401(k) / 403(b)', AccountType.traditional),
-        _accountStep('Traditional IRA', AccountType.traditional),
-        _accountStep('Roth IRA / Roth 401(k)', AccountType.roth),
+        _accountStep('401(k) / 403(b)', AccountType.traditional401k),
+        _accountStep('Traditional IRA', AccountType.traditionalIra),
+        _accountStep('Roth 401(k)', AccountType.roth401k),
+        _accountStep('Roth IRA', AccountType.rothIra),
         _accountStep('HSA', AccountType.hsa),
         _accountStep('Other investments', AccountType.taxable),
       ],

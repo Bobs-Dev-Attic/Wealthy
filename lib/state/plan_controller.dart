@@ -91,6 +91,19 @@ class PlanState {
   double get holdingsValue => holdings.fold(0.0, (s, h) => s + h.marketValue);
   double get totalAssets =>
       accounts.fold(0.0, (s, a) => s + a.balance) + holdingsValue;
+
+  /// Total assets grouped by tax treatment — this is what drives retirement
+  /// taxes (pre-tax taxed as income, Roth/HSA tax-free, taxable via gains).
+  Map<TaxBucket, double> get assetsByTaxBucket {
+    final m = {for (final b in TaxBucket.values) b: 0.0};
+    for (final a in accounts) {
+      m[a.type.taxBucket] = m[a.type.taxBucket]! + a.balance;
+    }
+    for (final h in holdings) {
+      m[h.accountType.taxBucket] = m[h.accountType.taxBucket]! + h.marketValue;
+    }
+    return m;
+  }
   double get totalLiabilities => liabilities.fold(0.0, (s, l) => s + l.balance);
   double get netWorth => totalAssets - totalLiabilities;
   double get annualIncome => incomes.fold(0.0, (s, i) => s + i.annualAmount);

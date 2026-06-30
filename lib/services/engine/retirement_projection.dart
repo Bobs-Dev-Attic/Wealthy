@@ -83,33 +83,33 @@ class PlanInputs {
   }) {
     double cash = 0, taxable = 0, basis = 0, trad = 0, roth = 0, hsa = 0;
     for (final a in accounts) {
-      switch (a.type) {
-        case AccountType.cash:
+      switch (a.type.taxBucket) {
+        case TaxBucket.cash:
           cash += a.balance;
-        case AccountType.taxable:
+        case TaxBucket.taxable:
           taxable += a.balance;
           basis += a.costBasis;
-        case AccountType.traditional:
+        case TaxBucket.taxDeferred:
           trad += a.balance;
-        case AccountType.roth:
+        case TaxBucket.taxFree:
           roth += a.balance;
-        case AccountType.hsa:
+        case TaxBucket.hsa:
           hsa += a.balance;
       }
     }
     for (final h in holdings) {
       final v = h.marketValue;
-      switch (h.accountType) {
-        case AccountType.taxable:
+      switch (h.accountType.taxBucket) {
+        case TaxBucket.taxable:
           taxable += v;
           basis += h.costBasis;
-        case AccountType.traditional:
+        case TaxBucket.taxDeferred:
           trad += v;
-        case AccountType.roth:
+        case TaxBucket.taxFree:
           roth += v;
-        case AccountType.hsa:
+        case TaxBucket.hsa:
           hsa += v;
-        case AccountType.cash:
+        case TaxBucket.cash:
           cash += v;
       }
     }
