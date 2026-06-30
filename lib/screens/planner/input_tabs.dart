@@ -153,6 +153,7 @@ class InvestmentsTab extends ConsumerWidget {
             GuidedButton(onPressed: () => launchInterview(context, investmentsInterview())),
           ],
         ),
+        if (s.totalAssets > 0) _TaxMixCard(byBucket: s.assetsByTaxBucket),
         if (s.accounts.isEmpty && s.holdings.isEmpty)
           const Padding(
             padding: EdgeInsets.only(top: 12),
@@ -210,6 +211,92 @@ class InvestmentsTab extends ConsumerWidget {
         const SizedBox(height: 14),
         const _HoldingsSection(),
       ],
+    );
+  }
+}
+
+/// Compact breakdown of total assets by tax treatment. This is the dimension
+/// that determines post-retirement taxes: pre-tax balances are taxed as income
+/// when withdrawn (and force RMDs), Roth/HSA come out tax-free, and taxable
+/// accounts are taxed only on gains.
+class _TaxMixCard extends StatelessWidget {
+  const _TaxMixCard({required this.byBucket});
+  final Map<TaxBucket, double> byBucket;
+
+  static const _order = [
+    TaxBucket.taxDeferred,
+    TaxBucket.taxFree,
+    TaxBucket.taxable,
+    TaxBucket.hsa,
+    TaxBucket.cash,
+  ];
+
+  Color _color(TaxBucket b, ColorScheme cs) => switch (b) {
+        TaxBucket.taxDeferred => Colors.orangeAccent,
+        TaxBucket.taxFree => Colors.greenAccent,
+        TaxBucket.taxable => Colors.blueAccent,
+        TaxBucket.hsa => Colors.tealAccent,
+        TaxBucket.cash => cs.outline,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final entries = [
+      for (final b in _order)
+        if ((byBucket[b] ?? 0) > 0) (b, byBucket[b]!),
+    ];
+    if (entries.isEmpty) return const SizedBox.shrink();
+    final preTax = byBucket[TaxBucket.taxDeferred] ?? 0;
+    return Card(
+      margin: const EdgeInsets.only(top: 12),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Icon(Icons.account_balance_wallet_outlined, size: 16),
+              const SizedBox(width: 6),
+              Text('Assets by tax treatment',
+                  style: Theme.of(context).textTheme.titleSmall),
+            ]),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final (b, v) in entries)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _color(b, cs).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: _color(b, cs).withValues(alpha: 0.4)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(b.label, style: const TextStyle(fontSize: 11.5)),
+                        Text(money(v),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+            if (preTax > 0) ...[
+              const SizedBox(height: 10),
+              Text(
+                'Pre-tax balances (${money(preTax)}) are taxed as ordinary income when '
+                'withdrawn and trigger RMDs at 73. Run the Taxes interview to model the bite.',
+                style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

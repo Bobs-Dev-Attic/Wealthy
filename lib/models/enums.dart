@@ -1,5 +1,12 @@
-/// Account tax treatment.
-enum AccountType { taxable, traditional, roth, hsa, cash }
+/// A specific kind of account. Kinds are distinguished so balances can be
+/// tracked separately, but each maps to one [TaxBucket] that the planning engine
+/// uses for withdrawal ordering and post-retirement taxation.
+enum AccountType { taxable, traditional401k, traditionalIra, roth401k, rothIra, hsa, cash }
+
+/// How an account is taxed — the dimension that actually drives retirement-year
+/// taxes, regardless of the specific account kind. A Traditional 401(k) and a
+/// Traditional IRA share the same bucket because they are taxed identically.
+enum TaxBucket { taxable, taxDeferred, taxFree, hsa, cash }
 
 /// Income source kinds. `socialSecurity` is taxed specially (provisional income).
 enum IncomeType { socialSecurity, pension, annuity, employment, other }
@@ -38,22 +45,63 @@ enum WithdrawalStrategy { fixedPercent, inflationAdjusted, guardrails, vpw }
 extension AccountTypeX on AccountType {
   String get db => switch (this) {
         AccountType.taxable => 'taxable',
-        AccountType.traditional => 'traditional',
-        AccountType.roth => 'roth',
+        AccountType.traditional401k => 'traditional_401k',
+        AccountType.traditionalIra => 'traditional_ira',
+        AccountType.roth401k => 'roth_401k',
+        AccountType.rothIra => 'roth_ira',
         AccountType.hsa => 'hsa',
         AccountType.cash => 'cash',
       };
   String get label => switch (this) {
         AccountType.taxable => 'Taxable brokerage',
-        AccountType.traditional => 'Traditional / 401(k) / IRA',
-        AccountType.roth => 'Roth',
+        AccountType.traditional401k => 'Traditional 401(k) / 403(b)',
+        AccountType.traditionalIra => 'Traditional IRA',
+        AccountType.roth401k => 'Roth 401(k)',
+        AccountType.rothIra => 'Roth IRA',
         AccountType.hsa => 'HSA',
         AccountType.cash => 'Cash / savings',
       };
-  /// Tax-deferred accounts subject to Required Minimum Distributions.
-  bool get isTaxDeferred => this == AccountType.traditional;
-  static AccountType fromDb(String s) =>
-      AccountType.values.firstWhere((e) => e.db == s, orElse: () => AccountType.taxable);
+
+  /// The tax treatment that drives engine behavior (withdrawal order, RMDs,
+  /// and how each dollar is taxed in retirement).
+  TaxBucket get taxBucket => switch (this) {
+        AccountType.taxable => TaxBucket.taxable,
+        AccountType.traditional401k || AccountType.traditionalIra => TaxBucket.taxDeferred,
+        AccountType.roth401k || AccountType.rothIra => TaxBucket.taxFree,
+        AccountType.hsa => TaxBucket.hsa,
+        AccountType.cash => TaxBucket.cash,
+      };
+
+  /// Pre-tax accounts: taxed as ordinary income on withdrawal and subject to
+  /// Required Minimum Distributions.
+  bool get isTaxDeferred => taxBucket == TaxBucket.taxDeferred;
+
+  static AccountType fromDb(String s) => switch (s) {
+        // Legacy values stored before 401(k)/IRA were split into kinds. Tax
+        // treatment is unchanged; the user can re-pick the specific kind.
+        'traditional' => AccountType.traditional401k,
+        'roth' => AccountType.rothIra,
+        _ => AccountType.values.firstWhere((e) => e.db == s, orElse: () => AccountType.taxable),
+      };
+}
+
+extension TaxBucketX on TaxBucket {
+  String get label => switch (this) {
+        TaxBucket.taxable => 'Taxable',
+        TaxBucket.taxDeferred => 'Pre-tax (taxed at withdrawal)',
+        TaxBucket.taxFree => 'Roth (tax-free)',
+        TaxBucket.hsa => 'HSA (tax-free medical)',
+        TaxBucket.cash => 'Cash',
+      };
+
+  /// Short label for compact chips.
+  String get shortLabel => switch (this) {
+        TaxBucket.taxable => 'Taxable',
+        TaxBucket.taxDeferred => 'Pre-tax',
+        TaxBucket.taxFree => 'Roth',
+        TaxBucket.hsa => 'HSA',
+        TaxBucket.cash => 'Cash',
+      };
 }
 
 extension IncomeTypeX on IncomeType {
