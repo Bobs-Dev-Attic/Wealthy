@@ -8,6 +8,7 @@ import '../../state/plan_controller.dart';
 import '../../state/providers.dart';
 import 'input_tabs.dart';
 import 'result_tabs.dart';
+import 'roth_conversion_view.dart';
 
 /// The whole experience on one screen: tabbed inputs on top, tabbed live
 /// results on the bottom, separated by a draggable divider. Editing any field
@@ -104,6 +105,7 @@ class _PlannerScreenState extends ConsumerState<PlannerScreen> {
                     'Cash flow',
                     'Taxes',
                     'RMD',
+                    'Roth Plan',
                     'Healthcare',
                     if (hasDebt) 'Debt',
                   ],
@@ -114,6 +116,7 @@ class _PlannerScreenState extends ConsumerState<PlannerScreen> {
                     const CashFlowView(),
                     const TaxesView(),
                     const RmdView(),
+                    const RothConversionView(),
                     const HealthcareView(),
                     if (hasDebt) const DebtView(),
                   ],
